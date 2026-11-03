@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": ".tmp-strider",
-    "slug": ".tmp-strider",
+    "name": "Strider",
+    "slug": "strider",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "tmpstrider",
+    "scheme": "strider",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
