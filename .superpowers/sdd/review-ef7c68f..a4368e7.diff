@@ -1,0 +1,56 @@
+# Review package: ef7c68fcae0f7cd4e1fae3cf7dbcd2f3c0296b69..a4368e7913d0601a0bc78354ba211b42fc8148f9
+
+## Commits
+a4368e7 Rename Expo app to Strider.
+
+## Files changed
+ app.json     | 6 +++---
+ package.json | 2 +-
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/app.json b/app.json
+index 5e5e497..2cf0ad8 100644
+--- a/app.json
++++ b/app.json
+@@ -1,18 +1,18 @@
+ {
+   "expo": {
+-    "name": ".tmp-strider",
+-    "slug": ".tmp-strider",
++    "name": "Strider",
++    "slug": "strider",
+     "version": "1.0.0",
+     "orientation": "portrait",
+     "icon": "./assets/images/icon.png",
+-    "scheme": "tmpstrider",
++    "scheme": "strider",
+     "userInterfaceStyle": "automatic",
+     "ios": {
+       "icon": "./assets/expo.icon"
+     },
+     "android": {
+       "adaptiveIcon": {
+         "backgroundColor": "#E6F4FE",
+         "foregroundImage": "./assets/images/android-icon-foreground.png",
+         "backgroundImage": "./assets/images/android-icon-background.png",
+         "monochromeImage": "./assets/images/android-icon-monochrome.png"
+diff --git a/package.json b/package.json
+index af1062e..f02b7fc 100644
+--- a/package.json
++++ b/package.json
+@@ -1,12 +1,12 @@
+ {
+-  "name": "tmp-strider",
++  "name": "strider",
+   "version": "1.0.0",
+   "main": "expo-router/entry",
+   "dependencies": {
+     "@expo/ui": "~58.0.26",
+     "expo": "~58.0.22",
+     "expo-constants": "~58.0.14",
+     "expo-device": "~58.0.5",
+     "expo-font": "~58.0.11",
+     "expo-glass-effect": "~58.0.5",
+     "expo-image": "~58.0.18",
+

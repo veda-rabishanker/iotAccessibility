@@ -1,0 +1,2033 @@
+# Review package: 265a6151135bbb4bc60b7af078582f0f4041599c..6f7d7719942569910d757a3ea1172461eb7ed936
+
+## Commits
+6f7d771 Document how to run the Strider Expo shell.
+a4368e7 Rename Expo app to Strider.
+ef7c68f Scaffold Expo TypeScript app for Strider shell.
+
+## Files changed
+ .claude/settings.json                              |    5 +
+ .gitignore                                         |   43 +
+ .superpowers/sdd/progress.md                       |    7 +
+ .superpowers/sdd/task-1-brief.md                   |   56 +
+ .vscode/extensions.json                            |    1 +
+ .vscode/settings.json                              |    7 +
+ LICENSE                                            |   21 +
+ README.md                                          |   21 +
+ app.json                                           |   42 +
+ assets/expo.icon/Assets/expo-symbol 2.svg          |    3 +
+ assets/expo.icon/Assets/grid.png                   |  Bin 0 -> 53681 bytes
+ assets/expo.icon/icon.json                         |   40 +
+ assets/images/android-icon-background.png          |  Bin 0 -> 17549 bytes
+ assets/images/android-icon-foreground.png          |  Bin 0 -> 78796 bytes
+ assets/images/android-icon-monochrome.png          |  Bin 0 -> 4140 bytes
+ assets/images/expo-badge-white.png                 |  Bin 0 -> 4129 bytes
+ assets/images/expo-badge.png                       |  Bin 0 -> 4137 bytes
+ assets/images/expo-logo.png                        |  Bin 0 -> 3317 bytes
+ assets/images/favicon.png                          |  Bin 0 -> 1129 bytes
+ assets/images/icon.png                             |  Bin 0 -> 799005 bytes
+ assets/images/logo-glow.png                        |  Bin 0 -> 331624 bytes
+ assets/images/react-logo.png                       |  Bin 0 -> 6341 bytes
+ assets/images/react-logo@2x.png                    |  Bin 0 -> 14225 bytes
+ assets/images/react-logo@3x.png                    |  Bin 0 -> 21252 bytes
+ assets/images/splash-icon.png                      |  Bin 0 -> 3317 bytes
+ assets/images/tabIcons/explore.png                 |  Bin 0 -> 215 bytes
+ assets/images/tabIcons/explore@2x.png              |  Bin 0 -> 347 bytes
+ assets/images/tabIcons/explore@3x.png              |  Bin 0 -> 468 bytes
+ assets/images/tabIcons/home.png                    |  Bin 0 -> 253 bytes
+ assets/images/tabIcons/home@2x.png                 |  Bin 0 -> 343 bytes
+ assets/images/tabIcons/home@3x.png                 |  Bin 0 -> 479 bytes
+ assets/images/tutorial-web.png                     |  Bin 0 -> 58959 bytes
+ .../plans/2026-11-02-strider-expo-shell.md         |  241 +
+ package-lock.json                                  | 7794 ++++++++++++++++++++
+ package.json                                       |   43 +
+ scripts/reset-project.js                           |  145 +
+ src/app/_layout.tsx                                |   18 +
+ src/app/explore.tsx                                |  180 +
+ src/app/index.tsx                                  |   98 +
+ src/components/animated-icon.module.css            |    6 +
+ src/components/animated-icon.tsx                   |  148 +
+ src/components/animated-icon.web.tsx               |  108 +
+ src/components/app-tabs.tsx                        |   32 +
+ src/components/app-tabs.web.tsx                    |  115 +
+ src/components/external-link.tsx                   |   25 +
+ src/components/hint-row.tsx                        |   35 +
+ src/components/themed-text.tsx                     |   57 +
+ src/components/themed-view.tsx                     |   16 +
+ src/components/ui/collapsible.tsx                  |   65 +
+ src/components/web-badge.tsx                       |   43 +
+ src/constants/theme.ts                             |   65 +
+ src/global.css                                     |    9 +
+ src/hooks/use-color-scheme.ts                      |    1 +
+ src/hooks/use-color-scheme.web.ts                  |   21 +
+ src/hooks/use-theme.ts                             |   14 +
+ tsconfig.json                                      |   20 +
+ 56 files changed, 9545 insertions(+)
+
+## Diff
+diff --git a/.claude/settings.json b/.claude/settings.json
+new file mode 100644
+index 0000000..176e6a5
+--- /dev/null
++++ b/.claude/settings.json
+@@ -0,0 +1,5 @@
++{
++  "enabledPlugins": {
++    "expo@claude-plugins-official": true
++  }
++}
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..4b00baf
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,43 @@
++# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
++
++# dependencies
++node_modules/
++
++# Expo
++.expo/
++dist/
++web-build/
++expo-env.d.ts
++
++# Native
++.kotlin/
++*.orig.*
++*.jks
++*.p8
++*.p12
++*.key
++*.mobileprovision
++
++# Metro
++.metro-health-check*
++
++# debug
++npm-debug.*
++yarn-debug.*
++yarn-error.*
++
++# macOS
++.DS_Store
++*.pem
++
++# local env files
++.env*.local
++
++# typescript
++*.tsbuildinfo
++
++example
++
++# generated native folders
++/ios
++/android
+diff --git a/.vscode/extensions.json b/.vscode/extensions.json
+new file mode 100644
+index 0000000..b7ed837
+--- /dev/null
++++ b/.vscode/extensions.json
+@@ -0,0 +1 @@
++{ "recommendations": ["expo.vscode-expo-tools"] }
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+new file mode 100644
+index 0000000..e2798e4
+--- /dev/null
++++ b/.vscode/settings.json
+@@ -0,0 +1,7 @@
++{
++  "editor.codeActionsOnSave": {
++    "source.fixAll": "explicit",
++    "source.organizeImports": "explicit",
++    "source.sortMembers": "explicit"
++  }
++}
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..30b20e3
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,21 @@
++The MIT License (MIT)
++
++Copyright (c) 2015-present 650 Industries, Inc. (aka Expo)
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..1431695
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,21 @@
++# Strider
++
++Ultra-thin Expo (React Native) shell for the Strider accessibility app. This pass is scaffolding only — template routes, no product features yet.
++
++## Prerequisites
++
++- Node.js 22+ (LTS is fine)
++- Phone with [Expo Go](https://expo.dev/go), or iOS Simulator / Android Emulator
++
++## Run
++
++```bash
++npm install
++npx expo start
++```
++
++Scan the QR code with Expo Go, or press `i` / `a` for simulators.
++
++## Not in this shell yet
++
++Product routes, NativeWind, Firebase, device/camera layer, and analysis — added when needed.
+diff --git a/app.json b/app.json
+new file mode 100644
+index 0000000..2cf0ad8
+--- /dev/null
++++ b/app.json
+@@ -0,0 +1,42 @@
++{
++  "expo": {
++    "name": "Strider",
++    "slug": "strider",
++    "version": "1.0.0",
++    "orientation": "portrait",
++    "icon": "./assets/images/icon.png",
++    "scheme": "strider",
++    "userInterfaceStyle": "automatic",
++    "ios": {
++      "icon": "./assets/expo.icon"
++    },
++    "android": {
++      "adaptiveIcon": {
++        "backgroundColor": "#E6F4FE",
++        "foregroundImage": "./assets/images/android-icon-foreground.png",
++        "backgroundImage": "./assets/images/android-icon-background.png",
++        "monochromeImage": "./assets/images/android-icon-monochrome.png"
++      },
++      "predictiveBackGestureEnabled": false
++    },
++    "web": {
++      "output": "server",
++      "favicon": "./assets/images/favicon.png"
++    },
++    "plugins": [
++      "expo-router",
++      [
++        "expo-splash-screen",
++        {
++          "backgroundColor": "#208AEF",
++          "image": "./assets/images/splash-icon.png",
++          "imageWidth": 76
++        }
++      ]
++    ],
++    "experiments": {
++      "typedRoutes": true,
++      "reactCompiler": true
++    }
++  }
++}
+diff --git a/assets/expo.icon/Assets/expo-symbol 2.svg b/assets/expo.icon/Assets/expo-symbol 2.svg
+new file mode 100644
+index 0000000..51d3676
+--- /dev/null
++++ b/assets/expo.icon/Assets/expo-symbol 2.svg	
+@@ -0,0 +1,3 @@
++<svg width="652" height="606" viewBox="0 0 652 606" fill="none" xmlns="http://www.w3.org/2000/svg">
++<path d="M353.554 0H298.446C273.006 0 249.684 14.6347 237.962 37.9539L4.37994 502.646C-1.04325 513.435 -1.45067 526.178 3.2716 537.313L22.6123 582.918C34.6475 611.297 72.5404 614.156 88.4414 587.885L309.863 222.063C313.34 216.317 319.439 212.826 326 212.826C332.561 212.826 338.659 216.317 342.137 222.063L563.559 587.885C579.46 614.156 617.352 611.297 629.388 582.918L648.728 537.313C653.451 526.178 653.043 513.435 647.62 502.646L414.038 37.9539C402.316 14.6347 378.994 0 353.554 0Z" fill="white"/>
++</svg>
+diff --git a/assets/expo.icon/Assets/grid.png b/assets/expo.icon/Assets/grid.png
+new file mode 100644
+index 0000000..eefea24
+Binary files /dev/null and b/assets/expo.icon/Assets/grid.png differ
+diff --git a/assets/expo.icon/icon.json b/assets/expo.icon/icon.json
+new file mode 100644
+index 0000000..7a2c33c
+--- /dev/null
++++ b/assets/expo.icon/icon.json
+@@ -0,0 +1,40 @@
++{
++  "fill" : {
++    "automatic-gradient" : "extended-srgb:0.00000,0.47843,1.00000,1.00000"
++  },
++  "groups" : [
++    {
++      "layers" : [
++        {
++          "image-name" : "expo-symbol 2.svg",
++          "name" : "expo-symbol 2",
++          "position" : {
++            "scale" : 1,
++            "translation-in-points" : [
++              1.1008400065293245e-05,
++              -16.046875
++            ]
++          }
++        },
++        {
++          "image-name" : "grid.png",
++          "name" : "grid"
++        }
++      ],
++      "shadow" : {
++        "kind" : "neutral",
++        "opacity" : 0.5
++      },
++      "translucency" : {
++        "enabled" : true,
++        "value" : 0.5
++      }
++    }
++  ],
++  "supported-platforms" : {
++    "circles" : [
++      "watchOS"
++    ],
++    "squares" : "shared"
++  }
++}
+\ No newline at end of file
+diff --git a/assets/images/android-icon-background.png b/assets/images/android-icon-background.png
+new file mode 100644
+index 0000000..5ffefc5
+Binary files /dev/null and b/assets/images/android-icon-background.png differ
+diff --git a/assets/images/android-icon-foreground.png b/assets/images/android-icon-foreground.png
+new file mode 100644
+index 0000000..3a9e501
+Binary files /dev/null and b/assets/images/android-icon-foreground.png differ
+diff --git a/assets/images/android-icon-monochrome.png b/assets/images/android-icon-monochrome.png
+new file mode 100644
+index 0000000..77484eb
+Binary files /dev/null and b/assets/images/android-icon-monochrome.png differ
+diff --git a/assets/images/expo-badge-white.png b/assets/images/expo-badge-white.png
+new file mode 100644
+index 0000000..2863067
+Binary files /dev/null and b/assets/images/expo-badge-white.png differ
+diff --git a/assets/images/expo-badge.png b/assets/images/expo-badge.png
+new file mode 100644
+index 0000000..5d5c5bb
+Binary files /dev/null and b/assets/images/expo-badge.png differ
+diff --git a/assets/images/expo-logo.png b/assets/images/expo-logo.png
+new file mode 100644
+index 0000000..6b1642a
+Binary files /dev/null and b/assets/images/expo-logo.png differ
+diff --git a/assets/images/favicon.png b/assets/images/favicon.png
+new file mode 100644
+index 0000000..408bd74
+Binary files /dev/null and b/assets/images/favicon.png differ
+diff --git a/assets/images/icon.png b/assets/images/icon.png
+new file mode 100644
+index 0000000..67c777a
+Binary files /dev/null and b/assets/images/icon.png differ
+diff --git a/assets/images/logo-glow.png b/assets/images/logo-glow.png
+new file mode 100644
+index 0000000..edc99be
+Binary files /dev/null and b/assets/images/logo-glow.png differ
+diff --git a/assets/images/react-logo.png b/assets/images/react-logo.png
+new file mode 100644
+index 0000000..9d72a9f
+Binary files /dev/null and b/assets/images/react-logo.png differ
+diff --git a/assets/images/react-logo@2x.png b/assets/images/react-logo@2x.png
+new file mode 100644
+index 0000000..2229b13
+Binary files /dev/null and b/assets/images/react-logo@2x.png differ
+diff --git a/assets/images/react-logo@3x.png b/assets/images/react-logo@3x.png
+new file mode 100644
+index 0000000..a99b203
+Binary files /dev/null and b/assets/images/react-logo@3x.png differ
+diff --git a/assets/images/splash-icon.png b/assets/images/splash-icon.png
+new file mode 100644
+index 0000000..6b1642a
+Binary files /dev/null and b/assets/images/splash-icon.png differ
+diff --git a/assets/images/tabIcons/explore.png b/assets/images/tabIcons/explore.png
+new file mode 100644
+index 0000000..73d8258
+Binary files /dev/null and b/assets/images/tabIcons/explore.png differ
+diff --git a/assets/images/tabIcons/explore@2x.png b/assets/images/tabIcons/explore@2x.png
+new file mode 100644
+index 0000000..21b9bd2
+Binary files /dev/null and b/assets/images/tabIcons/explore@2x.png differ
+diff --git a/assets/images/tabIcons/explore@3x.png b/assets/images/tabIcons/explore@3x.png
+new file mode 100644
+index 0000000..422202d
+Binary files /dev/null and b/assets/images/tabIcons/explore@3x.png differ
+diff --git a/assets/images/tabIcons/home.png b/assets/images/tabIcons/home.png
+new file mode 100644
+index 0000000..ad5699c
+Binary files /dev/null and b/assets/images/tabIcons/home.png differ
+diff --git a/assets/images/tabIcons/home@2x.png b/assets/images/tabIcons/home@2x.png
+new file mode 100644
+index 0000000..22a1f2c
+Binary files /dev/null and b/assets/images/tabIcons/home@2x.png differ
+diff --git a/assets/images/tabIcons/home@3x.png b/assets/images/tabIcons/home@3x.png
+new file mode 100644
+index 0000000..f5d1f9a
+Binary files /dev/null and b/assets/images/tabIcons/home@3x.png differ
+diff --git a/assets/images/tutorial-web.png b/assets/images/tutorial-web.png
+new file mode 100644
+index 0000000..e4a8c58
+Binary files /dev/null and b/assets/images/tutorial-web.png differ
+diff --git a/docs/superpowers/plans/2026-11-02-strider-expo-shell.md b/docs/superpowers/plans/2026-11-02-strider-expo-shell.md
+new file mode 100644
+index 0000000..4b8de9e
+--- /dev/null
++++ b/docs/superpowers/plans/2026-11-02-strider-expo-shell.md
+@@ -0,0 +1,241 @@
++# Strider Ultra-Thin Expo Shell Implementation Plan
++
++> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
++
++**Goal:** Scaffold a minimal runnable Expo (TypeScript + Expo Router) app named Strider in this repo, with no product routes or extra libraries.
++
++**Architecture:** Use `create-expo-app`’s default template into a temp folder, move its files into the repo root without touching `.git` or the existing `docs/` tree, then rename the app in config and tighten the README. Leave template routes as-is.
++
++**Tech Stack:** Expo SDK (latest stable via `create-expo-app@latest`), TypeScript, Expo Router (template default), npm.
++
++## Global Constraints
++
++- Do not install NativeWind, Firebase, Zustand, expo-dev-client, maps, biometrics, speech, haptics, or other product packages.
++- Do not add custom product routes, `features/`, or accessibility helper libraries.
++- Do not create `eas.json`, run EAS builds, or log in to any external service.
++- Do not overwrite `.git` or delete `docs/superpowers/`.
++- Display name `Strider`, slug `strider`, URL scheme `strider`; do not invent a custom team bundle ID in this pass.
++- Windows PowerShell is the shell; prefer PowerShell-safe commands.
++
++---
++
++## File structure (after scaffold)
++
++| Path | Responsibility |
++|------|----------------|
++| `app/` | Template Expo Router screens (unchanged) |
++| `app.json` or `app.config.js` | Expo config — rename to Strider |
++| `package.json` | Dependencies and scripts from template; name `strider` |
++| `README.md` | How to run this shell |
++| `.gitignore` | Expo ignores from template |
++| `docs/superpowers/` | Existing spec/plan docs (keep) |
++
++---
++
++### Task 1: Scaffold Expo app into repo root
++
++**Files:**
++- Create: all files from `create-expo-app` default template under repo root
++- Preserve: `.git/`, `docs/superpowers/`
++
++**Interfaces:**
++- Consumes: none
++- Produces: runnable Expo project at repo root with template `app/` routes
++
++- [ ] **Step 1: Create the app in a temp directory**
++
++Run from `C:\Users\royob\Desktop\iotAccessibility`:
++
++```powershell
++npx create-expo-app@latest .tmp-strider -y
++```
++
++Expected: a new folder `.tmp-strider` with `package.json`, `app/`, and `node_modules` installed. Exit code 0.
++
++- [ ] **Step 2: Move template files into the repo root**
++
++```powershell
++Get-ChildItem -Force .\.tmp-strider | ForEach-Object {
++  $dest = Join-Path . $_.Name
++  if (Test-Path $dest) {
++    Write-Error "Refusing to overwrite existing path: $dest"
++    exit 1
++  }
++  Move-Item -LiteralPath $_.FullName -Destination $dest
++}
++Remove-Item -LiteralPath .\.tmp-strider -Recurse -Force
++```
++
++Expected: template files sit next to `docs/`; `.tmp-strider` is gone; `.git` untouched.
++
++- [ ] **Step 3: Confirm package.json exists and lists expo**
++
++```powershell
++Get-Content .\package.json | Select-String -Pattern '"expo"|"name"'
++```
++
++Expected: lines showing a `"name"` field and an `"expo"` dependency.
++
++- [ ] **Step 4: Commit the scaffold**
++
++```powershell
++git add -A
++git status
++git commit -m "Scaffold Expo TypeScript app for Strider shell."
++```
++
++Expected: commit succeeds; working tree clean except for intentional untracked files if any.
++
++---
++
++### Task 2: Rename app to Strider
++
++**Files:**
++- Modify: `app.json` (or `app.config.js` / `app.config.ts` if that is what the template created)
++- Modify: `package.json` (`name` field only)
++
++**Interfaces:**
++- Consumes: Expo config from Task 1
++- Produces: `expo.name` = `Strider`, `expo.slug` = `strider`, `expo.scheme` = `strider` (add `scheme` if missing), `package.json` name = `strider`
++
++- [ ] **Step 1: Inspect the Expo config file the template created**
++
++```powershell
++Get-ChildItem app.json, app.config.* -ErrorAction SilentlyContinue
++Get-Content .\app.json -ErrorAction SilentlyContinue
++```
++
++Expected: identify which config file exists and its current `name` / `slug` fields.
++
++- [ ] **Step 2: Update Expo config**
++
++If the file is `app.json`, set these fields under `expo` (keep all other template fields):
++
++```json
++{
++  "expo": {
++    "name": "Strider",
++    "slug": "strider",
++    "scheme": "strider"
++  }
++}
++```
++
++Do not change `ios.bundleIdentifier` or `android.package` in this pass if the template set defaults.
++
++- [ ] **Step 3: Update package.json name**
++
++Set:
++
++```json
++"name": "strider"
++```
++
++- [ ] **Step 4: Commit rename**
++
++```powershell
++git add app.json package.json
++git add app.config.js app.config.ts 2>$null
++git commit -m "Rename Expo app to Strider."
++```
++
++If only `app.json` and `package.json` changed, add those two. Expected: commit succeeds.
++
++---
++
++### Task 3: README for the shell
++
++**Files:**
++- Modify: `README.md`
++
++**Interfaces:**
++- Consumes: scripts from template `package.json` (at least `npx expo start`)
++- Produces: short README describing current shell scope and how to run
++
++- [ ] **Step 1: Replace README.md with shell-focused content**
++
++```markdown
++# Strider
++
++Ultra-thin Expo (React Native) shell for the Strider accessibility app. This pass is scaffolding only — template routes, no product features yet.
++
++## Prerequisites
++
++- Node.js 22+ (LTS is fine)
++- Phone with [Expo Go](https://expo.dev/go), or iOS Simulator / Android Emulator
++
++## Run
++
++```bash
++npm install
++npx expo start
++```
++
++Scan the QR code with Expo Go, or press `i` / `a` for simulators.
++
++## Not in this shell yet
++
++Product routes, NativeWind, Firebase, device/camera layer, and analysis — added when needed.
++```
++
++- [ ] **Step 2: Commit README**
++
++```powershell
++git add README.md
++git commit -m "Document how to run the Strider Expo shell."
++```
++
++Expected: commit succeeds.
++
++---
++
++### Task 4: Verify Metro bundles
++
++**Files:**
++- None (verification only)
++
++**Interfaces:**
++- Consumes: project from Tasks 1–3
++- Produces: confirmation that Expo starts without bundle errors
++
++- [ ] **Step 1: Start Expo briefly**
++
++```powershell
++npx expo start
++```
++
++Wait until the Metro bundler reports it is ready (DevTools URL / QR code). Do not leave it running indefinitely.
++
++- [ ] **Step 2: Confirm no startup errors**
++
++Expected in the terminal: Expo DevTools started; no red-box / fatal config errors about missing entry or invalid `app.json`.
++
++- [ ] **Step 3: Stop Metro**
++
++Press `Ctrl+C` in that terminal (or end the process) so the shell is not left running.
++
++- [ ] **Step 4: Final status check**
++
++```powershell
++git status
++```
++
++Expected: clean working tree (or only local Expo cache files that are gitignored).
++
++---
++
++## Spec coverage (self-review)
++
++| Spec requirement | Task |
++|------------------|------|
++| `create-expo-app@latest` TypeScript + Expo Router | Task 1 (default template) |
++| Temp folder move; don’t overwrite `.git` | Task 1 Step 2 |
++| Name Strider / slug `strider` / scheme `strider` | Task 2 |
++| No custom team bundle ID | Task 2 (explicit non-change) |
++| Leave template routes unchanged | Task 1 (no route edits) |
++| No extra product packages | Global Constraints + Task 1 |
++| `.gitignore` from template | Task 1 |
++| Short README how to run | Task 3 |
++| Brief `npx expo start` then stop | Task 4 |
++| Initial git commits for scaffold | Tasks 1–3 commits |
++| Keep `docs/superpowers` | Task 1 Step 2 refuse-overwrite |
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..f02b7fc
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,43 @@
++{
++  "name": "strider",
++  "version": "1.0.0",
++  "main": "expo-router/entry",
++  "dependencies": {
++    "@expo/ui": "~58.0.26",
++    "expo": "~58.0.22",
++    "expo-constants": "~58.0.14",
++    "expo-device": "~58.0.5",
++    "expo-font": "~58.0.11",
++    "expo-glass-effect": "~58.0.5",
++    "expo-image": "~58.0.18",
++    "expo-linking": "~58.0.15",
++    "expo-router": "~58.0.29",
++    "expo-splash-screen": "~58.0.12",
++    "expo-status-bar": "~58.0.4",
++    "expo-symbols": "~58.0.4",
++    "expo-system-ui": "~58.0.7",
++    "expo-web-browser": "~58.0.7",
++    "react": "19.3.0",
++    "react-dom": "19.3.0",
++    "react-native": "0.88.1",
++    "react-native-gesture-handler": "~3.3.0",
++    "react-native-reanimated": "4.7.1",
++    "react-native-safe-area-context": "~5.10.1",
++    "react-native-screens": "~4.30.1",
++    "react-native-web": "~0.21.4",
++    "react-native-worklets": "0.13.0"
++  },
++  "devDependencies": {
++    "@types/react": "~19.3.0",
++    "typescript": "~6.0.3"
++  },
++  "scripts": {
++    "start": "expo start",
++    "reset-project": "node ./scripts/reset-project.js",
++    "android": "expo start --android",
++    "ios": "expo start --ios",
++    "web": "expo start --web",
++    "lint": "expo lint"
++  },
++  "private": true
++}
+diff --git a/scripts/reset-project.js b/scripts/reset-project.js
+new file mode 100644
+index 0000000..747b7b2
+--- /dev/null
++++ b/scripts/reset-project.js
+@@ -0,0 +1,145 @@
++#!/usr/bin/env node
++
++/**
++ * This script is used to reset the project to a blank state.
++ * It deletes or moves the /src and /scripts directories to /example based on user input and creates a new /src/app directory with an index.tsx and _layout.tsx file.
++ * Demo images in /assets/images are deleted or moved along with them.
++ * You can remove the `reset-project` script from package.json and safely delete this file after running it.
++ */
++
++const fs = require("fs");
++const path = require("path");
++const readline = require("readline");
++
++const root = process.cwd();
++const oldDirs = ["src", "scripts"];
++const exampleDir = "example";
++const newAppDir = "src/app";
++const exampleDirPath = path.join(root, exampleDir);
++// Demo images and folders used only by the files in /src
++const exampleAssets = [
++  "expo-badge.png",
++  "expo-badge-white.png",
++  "expo-logo.png",
++  "logo-glow.png",
++  "react-logo.png",
++  "react-logo@2x.png",
++  "react-logo@3x.png",
++  "tutorial-web.png",
++  "tabIcons",
++];
++
++const indexContent = `import { Text, View, StyleSheet } from "react-native";
++
++export default function Index() {
++  return (
++    <View style={styles.container}>
++      <Text>Edit src/app/index.tsx to edit this screen.</Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    flex: 1,
++    alignItems: "center",
++    justifyContent: "center",
++  },
++});
++`;
++
++const layoutContent = `import { Stack } from "expo-router";
++
++export default function RootLayout() {
++  return <Stack />;
++}
++`;
++
++const rl = readline.createInterface({
++  input: process.stdin,
++  output: process.stdout,
++});
++
++const moveDirectories = async (userInput) => {
++  try {
++    if (userInput === "y") {
++      // Create the app-example directory
++      await fs.promises.mkdir(exampleDirPath, { recursive: true });
++      await fs.promises.mkdir(path.join(exampleDirPath, "assets/images"), { recursive: true });
++      console.log(`📁 /${exampleDir} directory created.`);
++    }
++
++    // Move old directories to new app-example directory or delete them
++    for (const dir of oldDirs) {
++      const oldDirPath = path.join(root, dir);
++      if (fs.existsSync(oldDirPath)) {
++        if (userInput === "y") {
++          const newDirPath = path.join(root, exampleDir, dir);
++          await fs.promises.rename(oldDirPath, newDirPath);
++          console.log(`➡️ /${dir} moved to /${exampleDir}/${dir}.`);
++        } else {
++          await fs.promises.rm(oldDirPath, { recursive: true, force: true });
++          console.log(`❌ /${dir} deleted.`);
++        }
++      } else {
++        console.log(`➡️ /${dir} does not exist, skipping.`);
++      }
++    }
++
++    // Move demo assets to /example or delete them
++    for (const asset of exampleAssets) {
++      const assetPath = path.join(root, "assets/images", asset);
++      if (fs.existsSync(assetPath)) {
++        if (userInput === "y") {
++          const newAssetPath = path.join(exampleDirPath, "assets/images", asset);
++          await fs.promises.rename(assetPath, newAssetPath);
++          console.log(
++            `➡️ /assets/images/${asset} moved to /${exampleDir}/assets/images/${asset}.`
++          );
++        } else {
++          await fs.promises.rm(assetPath, { recursive: true, force: true });
++          console.log(`❌ /assets/images/${asset} deleted.`);
++        }
++      }
++    }
++
++    // Create new /src/app directory
++    const newAppDirPath = path.join(root, newAppDir);
++    await fs.promises.mkdir(newAppDirPath, { recursive: true });
++    console.log("\n📁 New /src/app directory created.");
++
++    // Create index.tsx
++    const indexPath = path.join(newAppDirPath, "index.tsx");
++    await fs.promises.writeFile(indexPath, indexContent);
++    console.log("📄 src/app/index.tsx created.");
++
++    // Create _layout.tsx
++    const layoutPath = path.join(newAppDirPath, "_layout.tsx");
++    await fs.promises.writeFile(layoutPath, layoutContent);
++    console.log("📄 src/app/_layout.tsx created.");
++
++    console.log("\n✅ Project reset complete. Next steps:");
++    console.log(
++      `1. Run \`npx expo start\` to start a development server.\n2. Edit src/app/index.tsx to edit the main screen.\n3. Put all your application code in /src, only screens and layout files should be in /src/app.${
++        userInput === "y"
++          ? `\n4. Delete the /${exampleDir} directory when you're done referencing it.`
++          : ""
++      }`
++    );
++  } catch (error) {
++    console.error(`❌ Error during script execution: ${error.message}`);
++  }
++};
++
++rl.question(
++  "Do you want to move existing files to /example instead of deleting them? (Y/n): ",
++  (answer) => {
++    const userInput = answer.trim().toLowerCase() || "y";
++    if (userInput === "y" || userInput === "n") {
++      moveDirectories(userInput).finally(() => rl.close());
++    } else {
++      console.log("❌ Invalid input. Please enter 'Y' or 'N'.");
++      rl.close();
++    }
++  }
++);
+diff --git a/src/app/_layout.tsx b/src/app/_layout.tsx
+new file mode 100644
+index 0000000..b3fd50c
+--- /dev/null
++++ b/src/app/_layout.tsx
+@@ -0,0 +1,18 @@
++import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
++import * as SplashScreen from 'expo-splash-screen';
++import { useColorScheme } from 'react-native';
++
++import { AnimatedSplashOverlay } from '@/components/animated-icon';
++import AppTabs from '@/components/app-tabs';
++
++SplashScreen.preventAutoHideAsync();
++
++export default function TabLayout() {
++  const colorScheme = useColorScheme();
++  return (
++    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
++      <AnimatedSplashOverlay />
++      <AppTabs />
++    </ThemeProvider>
++  );
++}
+diff --git a/src/app/explore.tsx b/src/app/explore.tsx
+new file mode 100644
+index 0000000..2934085
+--- /dev/null
++++ b/src/app/explore.tsx
+@@ -0,0 +1,180 @@
++import { Image } from 'expo-image';
++import { SymbolView } from 'expo-symbols';
++import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
++import { useSafeAreaInsets } from 'react-native-safe-area-context';
++
++import { ExternalLink } from '@/components/external-link';
++import { ThemedText } from '@/components/themed-text';
++import { ThemedView } from '@/components/themed-view';
++import { Collapsible } from '@/components/ui/collapsible';
++import { WebBadge } from '@/components/web-badge';
++import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
++import { useTheme } from '@/hooks/use-theme';
++
++export default function TabTwoScreen() {
++  const safeAreaInsets = useSafeAreaInsets();
++  const insets = {
++    ...safeAreaInsets,
++    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
++  };
++  const theme = useTheme();
++
++  const contentPlatformStyle = Platform.select({
++    android: {
++      paddingTop: insets.top,
++      paddingLeft: insets.left,
++      paddingRight: insets.right,
++      paddingBottom: insets.bottom,
++    },
++    web: {
++      paddingTop: Spacing.six,
++      paddingBottom: Spacing.four,
++    },
++  });
++
++  return (
++    <ScrollView
++      style={[styles.scrollView, { backgroundColor: theme.background }]}
++      contentInset={insets}
++      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
++      <ThemedView style={styles.container}>
++        <ThemedView style={styles.titleContainer}>
++          <ThemedText type="subtitle">Explore</ThemedText>
++          <ThemedText style={styles.centerText} themeColor="textSecondary">
++            This starter app includes example{'\n'}code to help you get started.
++          </ThemedText>
++
++          <ExternalLink href="https://docs.expo.dev" asChild>
++            <Pressable style={({ pressed }) => pressed && styles.pressed}>
++              <ThemedView type="backgroundElement" style={styles.linkButton}>
++                <ThemedText type="link">Expo documentation</ThemedText>
++                <SymbolView
++                  tintColor={theme.text}
++                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
++                  size={12}
++                />
++              </ThemedView>
++            </Pressable>
++          </ExternalLink>
++        </ThemedView>
++
++        <ThemedView style={styles.sectionsWrapper}>
++          <Collapsible title="File-based routing">
++            <ThemedText type="small">
++              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
++              <ThemedText type="code">src/app/explore.tsx</ThemedText>
++            </ThemedText>
++            <ThemedText type="small">
++              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
++              the tab navigator.
++            </ThemedText>
++            <ExternalLink href="https://docs.expo.dev/router/introduction">
++              <ThemedText type="linkPrimary">Learn more</ThemedText>
++            </ExternalLink>
++          </Collapsible>
++
++          <Collapsible title="Android, iOS, and web support">
++            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
++              <ThemedText type="small">
++                You can open this project on Android, iOS, and the web. To open the web version,
++                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
++                project.
++              </ThemedText>
++              <Image
++                source={require('@/assets/images/tutorial-web.png')}
++                style={styles.imageTutorial}
++              />
++            </ThemedView>
++          </Collapsible>
++
++          <Collapsible title="Images">
++            <ThemedText type="small">
++              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
++              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
++              screen densities.
++            </ThemedText>
++            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
++            <ExternalLink href="https://reactnative.dev/docs/images">
++              <ThemedText type="linkPrimary">Learn more</ThemedText>
++            </ExternalLink>
++          </Collapsible>
++
++          <Collapsible title="Light and dark mode components">
++            <ThemedText type="small">
++              This template has light and dark mode support. The{' '}
++              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
++              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
++            </ThemedText>
++            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
++              <ThemedText type="linkPrimary">Learn more</ThemedText>
++            </ExternalLink>
++          </Collapsible>
++
++          <Collapsible title="Animations">
++            <ThemedText type="small">
++              This template includes an example of an animated component. The{' '}
++              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
++              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
++              animate opening this hint.
++            </ThemedText>
++          </Collapsible>
++        </ThemedView>
++        {Platform.OS === 'web' && <WebBadge />}
++      </ThemedView>
++    </ScrollView>
++  );
++}
++
++const styles = StyleSheet.create({
++  scrollView: {
++    flex: 1,
++  },
++  contentContainer: {
++    flexDirection: 'row',
++    justifyContent: 'center',
++  },
++  container: {
++    maxWidth: MaxContentWidth,
++    flexGrow: 1,
++  },
++  titleContainer: {
++    gap: Spacing.three,
++    alignItems: 'center',
++    paddingHorizontal: Spacing.four,
++    paddingVertical: Spacing.six,
++  },
++  centerText: {
++    textAlign: 'center',
++  },
++  pressed: {
++    opacity: 0.7,
++  },
++  linkButton: {
++    flexDirection: 'row',
++    paddingHorizontal: Spacing.four,
++    paddingVertical: Spacing.two,
++    borderRadius: Spacing.five,
++    justifyContent: 'center',
++    gap: Spacing.one,
++    alignItems: 'center',
++  },
++  sectionsWrapper: {
++    gap: Spacing.five,
++    paddingHorizontal: Spacing.four,
++    paddingTop: Spacing.three,
++  },
++  collapsibleContent: {
++    alignItems: 'center',
++  },
++  imageTutorial: {
++    width: '100%',
++    aspectRatio: 296 / 171,
++    borderRadius: Spacing.three,
++    marginTop: Spacing.two,
++  },
++  imageReact: {
++    width: 100,
++    height: 100,
++    alignSelf: 'center',
++  },
++});
+diff --git a/src/app/index.tsx b/src/app/index.tsx
+new file mode 100644
+index 0000000..8ec3e6f
+--- /dev/null
++++ b/src/app/index.tsx
+@@ -0,0 +1,98 @@
++import * as Device from 'expo-device';
++import { Platform, StyleSheet } from 'react-native';
++import { SafeAreaView } from 'react-native-safe-area-context';
++
++import { AnimatedIcon } from '@/components/animated-icon';
++import { HintRow } from '@/components/hint-row';
++import { ThemedText } from '@/components/themed-text';
++import { ThemedView } from '@/components/themed-view';
++import { WebBadge } from '@/components/web-badge';
++import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
++
++function getDevMenuHint() {
++  if (Platform.OS === 'web') {
++    return <ThemedText type="small">use browser devtools</ThemedText>;
++  }
++  if (Device.isDevice) {
++    return (
++      <ThemedText type="small">
++        shake device or press <ThemedText type="code">m</ThemedText> in terminal
++      </ThemedText>
++    );
++  }
++  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
++  return (
++    <ThemedText type="small">
++      press <ThemedText type="code">{shortcut}</ThemedText>
++    </ThemedText>
++  );
++}
++
++export default function HomeScreen() {
++  return (
++    <ThemedView style={styles.container}>
++      <SafeAreaView style={styles.safeArea}>
++        <ThemedView style={styles.heroSection}>
++          <AnimatedIcon />
++          <ThemedText type="title" style={styles.title}>
++            Welcome to&nbsp;Expo
++          </ThemedText>
++        </ThemedView>
++
++        <ThemedText type="code" style={styles.code}>
++          get started
++        </ThemedText>
++
++        <ThemedView type="backgroundElement" style={styles.stepContainer}>
++          <HintRow
++            title="Try editing"
++            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
++          />
++          <HintRow title="Dev tools" hint={getDevMenuHint()} />
++          <HintRow
++            title="Fresh start"
++            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
++          />
++        </ThemedView>
++
++        {Platform.OS === 'web' && <WebBadge />}
++      </SafeAreaView>
++    </ThemedView>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    flex: 1,
++    justifyContent: 'center',
++    flexDirection: 'row',
++  },
++  safeArea: {
++    flex: 1,
++    paddingHorizontal: Spacing.four,
++    alignItems: 'center',
++    gap: Spacing.three,
++    paddingBottom: BottomTabInset + Spacing.three,
++    maxWidth: MaxContentWidth,
++  },
++  heroSection: {
++    alignItems: 'center',
++    justifyContent: 'center',
++    flex: 1,
++    paddingHorizontal: Spacing.four,
++    gap: Spacing.four,
++  },
++  title: {
++    textAlign: 'center',
++  },
++  code: {
++    textTransform: 'uppercase',
++  },
++  stepContainer: {
++    gap: Spacing.three,
++    alignSelf: 'stretch',
++    paddingHorizontal: Spacing.three,
++    paddingVertical: Spacing.four,
++    borderRadius: Spacing.four,
++  },
++});
+diff --git a/src/components/animated-icon.module.css b/src/components/animated-icon.module.css
+new file mode 100644
+index 0000000..f8156fe
+--- /dev/null
++++ b/src/components/animated-icon.module.css
+@@ -0,0 +1,6 @@
++.expoLogoBackground {
++  background-image: linear-gradient(180deg, #3c9ffe, #0274df);
++  border-radius: 40px;
++  width: 128px;
++  height: 128px;
++}
+diff --git a/src/components/animated-icon.tsx b/src/components/animated-icon.tsx
+new file mode 100644
+index 0000000..c7c2911
+--- /dev/null
++++ b/src/components/animated-icon.tsx
+@@ -0,0 +1,148 @@
++import { Image } from 'expo-image';
++import * as SplashScreen from 'expo-splash-screen';
++import { useState } from 'react';
++import { Dimensions, StyleSheet, View } from 'react-native';
++import Animated, { Easing, Keyframe } from 'react-native-reanimated';
++import { scheduleOnRN } from 'react-native-worklets';
++
++const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
++const DURATION = 600;
++
++export function AnimatedSplashOverlay() {
++  const [animate, setAnimate] = useState(false);
++  const [visible, setVisible] = useState(true);
++
++  if (!visible) return null;
++
++  const splashKeyframe = new Keyframe({
++    0: {
++      transform: [{ scale: 1 }],
++      opacity: 1,
++    },
++    20: {
++      opacity: 1,
++    },
++    70: {
++      opacity: 0,
++      easing: Easing.elastic(0.7),
++    },
++    100: {
++      opacity: 0,
++      transform: [{ scale: 1 }],
++      easing: Easing.elastic(0.7),
++    },
++  });
++
++  const image = <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />;
++
++  return animate ? (
++    <Animated.View
++      entering={splashKeyframe.duration(DURATION).withCallback((finished) => {
++        'worklet';
++        if (finished) {
++          scheduleOnRN(setVisible, false);
++        }
++      })}
++      style={styles.splashOverlay}>
++      {image}
++    </Animated.View>
++  ) : (
++    <View
++      onLayout={() => {
++        SplashScreen.hideAsync().finally(() => {
++          setAnimate(true);
++        });
++      }}
++      style={styles.splashOverlay}>
++      {image}
++    </View>
++  );
++}
++
++const keyframe = new Keyframe({
++  0: {
++    transform: [{ scale: INITIAL_SCALE_FACTOR }],
++  },
++  100: {
++    transform: [{ scale: 1 }],
++    easing: Easing.elastic(0.7),
++  },
++});
++
++const logoKeyframe = new Keyframe({
++  0: {
++    transform: [{ scale: 1.3 }],
++    opacity: 0,
++  },
++  40: {
++    transform: [{ scale: 1.3 }],
++    opacity: 0,
++    easing: Easing.elastic(0.7),
++  },
++  100: {
++    opacity: 1,
++    transform: [{ scale: 1 }],
++    easing: Easing.elastic(0.7),
++  },
++});
++
++const glowKeyframe = new Keyframe({
++  0: {
++    transform: [{ rotateZ: '0deg' }],
++  },
++  100: {
++    transform: [{ rotateZ: '7200deg' }],
++  },
++});
++
++export function AnimatedIcon() {
++  return (
++    <View style={styles.iconContainer}>
++      <Animated.View entering={glowKeyframe.duration(60 * 1000 * 4)} style={styles.glow}>
++        <Image style={styles.glow} source={require('@/assets/images/logo-glow.png')} />
++      </Animated.View>
++
++      <Animated.View entering={keyframe.duration(DURATION)} style={styles.background} />
++      <Animated.View style={styles.imageContainer} entering={logoKeyframe.duration(DURATION)}>
++        <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />
++      </Animated.View>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  imageContainer: {
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  glow: {
++    width: 201,
++    height: 201,
++    position: 'absolute',
++  },
++  iconContainer: {
++    justifyContent: 'center',
++    alignItems: 'center',
++    width: 128,
++    height: 128,
++    zIndex: 100,
++  },
++  image: {
++    width: 76,
++    height: 71,
++  },
++  background: {
++    borderRadius: 40,
++    experimental_backgroundImage: `linear-gradient(180deg, #3C9FFE, #0274DF)`,
++    width: 128,
++    height: 128,
++    position: 'absolute',
++  },
++  splashOverlay: {
++    ...StyleSheet.absoluteFill,
++    backgroundColor: '#208AEF',
++    alignItems: 'center',
++    justifyContent: 'center',
++    zIndex: 1000,
++  },
++});
+diff --git a/src/components/animated-icon.web.tsx b/src/components/animated-icon.web.tsx
+new file mode 100644
+index 0000000..dfbb1fd
+--- /dev/null
++++ b/src/components/animated-icon.web.tsx
+@@ -0,0 +1,108 @@
++import { Image } from 'expo-image';
++import { StyleSheet, View } from 'react-native';
++import Animated, { Keyframe, Easing } from 'react-native-reanimated';
++
++import classes from './animated-icon.module.css';
++const DURATION = 300;
++
++export function AnimatedSplashOverlay() {
++  return null;
++}
++
++const keyframe = new Keyframe({
++  0: {
++    transform: [{ scale: 0 }],
++  },
++  60: {
++    transform: [{ scale: 1.2 }],
++    easing: Easing.elastic(1.2),
++  },
++  100: {
++    transform: [{ scale: 1 }],
++    easing: Easing.elastic(1.2),
++  },
++});
++
++const logoKeyframe = new Keyframe({
++  0: {
++    opacity: 0,
++  },
++  60: {
++    transform: [{ scale: 1.2 }],
++    opacity: 0,
++    easing: Easing.elastic(1.2),
++  },
++  100: {
++    transform: [{ scale: 1 }],
++    opacity: 1,
++    easing: Easing.elastic(1.2),
++  },
++});
++
++const glowKeyframe = new Keyframe({
++  0: {
++    transform: [{ rotateZ: '-180deg' }, { scale: 0.8 }],
++    opacity: 0,
++  },
++  [DURATION / 1000]: {
++    transform: [{ rotateZ: '0deg' }, { scale: 1 }],
++    opacity: 1,
++    easing: Easing.elastic(0.7),
++  },
++  100: {
++    transform: [{ rotateZ: '7200deg' }],
++  },
++});
++
++export function AnimatedIcon() {
++  return (
++    <View style={styles.iconContainer}>
++      <Animated.View entering={glowKeyframe.duration(60 * 1000 * 4)} style={styles.glow}>
++        <Image style={styles.glow} source={require('@/assets/images/logo-glow.png')} />
++      </Animated.View>
++
++      <Animated.View style={styles.background} entering={keyframe.duration(DURATION)}>
++        <div className={classes.expoLogoBackground} />
++      </Animated.View>
++
++      <Animated.View style={styles.imageContainer} entering={logoKeyframe.duration(DURATION)}>
++        <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />
++      </Animated.View>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    alignItems: 'center',
++    width: '100%',
++    zIndex: 1000,
++    position: 'absolute',
++    top: 128 / 2 + 138,
++  },
++  imageContainer: {
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  glow: {
++    width: 201,
++    height: 201,
++    position: 'absolute',
++  },
++  iconContainer: {
++    justifyContent: 'center',
++    alignItems: 'center',
++    width: 128,
++    height: 128,
++  },
++  image: {
++    position: 'absolute',
++    width: 76,
++    height: 71,
++  },
++  background: {
++    width: 128,
++    height: 128,
++    position: 'absolute',
++  },
++});
+diff --git a/src/components/app-tabs.tsx b/src/components/app-tabs.tsx
+new file mode 100644
+index 0000000..9e9695d
+--- /dev/null
++++ b/src/components/app-tabs.tsx
+@@ -0,0 +1,32 @@
++import { NativeTabs } from 'expo-router/native-tabs';
++import { useColorScheme } from 'react-native';
++
++import { Colors } from '@/constants/theme';
++
++export default function AppTabs() {
++  const scheme = useColorScheme();
++  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
++
++  return (
++    <NativeTabs
++      backgroundColor={colors.background}
++      indicatorColor={colors.backgroundElement}
++      labelStyle={{ selected: { color: colors.text } }}>
++      <NativeTabs.Trigger name="index">
++        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
++        <NativeTabs.Trigger.Icon
++          src={require('@/assets/images/tabIcons/home.png')}
++          renderingMode="template"
++        />
++      </NativeTabs.Trigger>
++
++      <NativeTabs.Trigger name="explore">
++        <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
++        <NativeTabs.Trigger.Icon
++          src={require('@/assets/images/tabIcons/explore.png')}
++          renderingMode="template"
++        />
++      </NativeTabs.Trigger>
++    </NativeTabs>
++  );
++}
+diff --git a/src/components/app-tabs.web.tsx b/src/components/app-tabs.web.tsx
+new file mode 100644
+index 0000000..96493d1
+--- /dev/null
++++ b/src/components/app-tabs.web.tsx
+@@ -0,0 +1,115 @@
++import {
++  Tabs,
++  TabList,
++  TabTrigger,
++  TabSlot,
++  TabTriggerSlotProps,
++  TabListProps,
++} from 'expo-router/ui';
++import { SymbolView } from 'expo-symbols';
++import { Pressable, useColorScheme, View, StyleSheet } from 'react-native';
++
++import { Colors, MaxContentWidth, Spacing } from '@/constants/theme';
++
++import { ExternalLink } from './external-link';
++import { ThemedText } from './themed-text';
++import { ThemedView } from './themed-view';
++
++export default function AppTabs() {
++  return (
++    <Tabs>
++      <TabSlot style={{ height: '100%' }} />
++      <TabList asChild>
++        <CustomTabList>
++          <TabTrigger name="home" href="/" asChild>
++            <TabButton>Home</TabButton>
++          </TabTrigger>
++          <TabTrigger name="explore" href="/explore" asChild>
++            <TabButton>Explore</TabButton>
++          </TabTrigger>
++        </CustomTabList>
++      </TabList>
++    </Tabs>
++  );
++}
++
++export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
++  return (
++    <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
++      <ThemedView
++        type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
++        style={styles.tabButtonView}>
++        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
++          {children}
++        </ThemedText>
++      </ThemedView>
++    </Pressable>
++  );
++}
++
++export function CustomTabList(props: TabListProps) {
++  const scheme = useColorScheme();
++  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
++
++  return (
++    <View {...props} style={styles.tabListContainer}>
++      <ThemedView type="backgroundElement" style={styles.innerContainer}>
++        <ThemedText type="smallBold" style={styles.brandText}>
++          Expo Starter
++        </ThemedText>
++
++        {props.children}
++
++        <ExternalLink href="https://docs.expo.dev" asChild>
++          <Pressable style={styles.externalPressable}>
++            <ThemedText type="link">Docs</ThemedText>
++            <SymbolView
++              tintColor={colors.text}
++              name={{ ios: 'arrow.up.right.square', web: 'link' }}
++              size={12}
++            />
++          </Pressable>
++        </ExternalLink>
++      </ThemedView>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  tabListContainer: {
++    position: 'absolute',
++    width: '100%',
++    padding: Spacing.three,
++    justifyContent: 'center',
++    alignItems: 'center',
++    flexDirection: 'row',
++  },
++  innerContainer: {
++    paddingVertical: Spacing.two,
++    paddingHorizontal: Spacing.five,
++    borderRadius: Spacing.five,
++    flexDirection: 'row',
++    alignItems: 'center',
++    flexGrow: 1,
++    gap: Spacing.two,
++    maxWidth: MaxContentWidth,
++  },
++  brandText: {
++    marginRight: 'auto',
++  },
++  pressed: {
++    opacity: 0.7,
++  },
++  tabButtonView: {
++    paddingVertical: Spacing.one,
++    paddingHorizontal: Spacing.three,
++    borderRadius: Spacing.three,
++  },
++  externalPressable: {
++    flexDirection: 'row',
++    justifyContent: 'center',
++    alignItems: 'center',
++    gap: Spacing.one,
++    marginLeft: Spacing.three,
++  },
++});
+diff --git a/src/components/external-link.tsx b/src/components/external-link.tsx
+new file mode 100644
+index 0000000..883e515
+--- /dev/null
++++ b/src/components/external-link.tsx
+@@ -0,0 +1,25 @@
++import { Href, Link } from 'expo-router';
++import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
++import { type ComponentProps } from 'react';
++
++type Props = Omit<ComponentProps<typeof Link>, 'href'> & { href: Href & string };
++
++export function ExternalLink({ href, ...rest }: Props) {
++  return (
++    <Link
++      target="_blank"
++      {...rest}
++      href={href}
++      onPress={async (event) => {
++        if (process.env.EXPO_OS !== 'web') {
++          // Prevent the default behavior of linking to the default browser on native.
++          event.preventDefault();
++          // Open the link in an in-app browser.
++          await openBrowserAsync(href, {
++            presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
++          });
++        }
++      }}
++    />
++  );
++}
+diff --git a/src/components/hint-row.tsx b/src/components/hint-row.tsx
+new file mode 100644
+index 0000000..acf4dc5
+--- /dev/null
++++ b/src/components/hint-row.tsx
+@@ -0,0 +1,35 @@
++import type { ReactNode } from 'react';
++import { View, StyleSheet } from 'react-native';
++
++import { ThemedText } from './themed-text';
++import { ThemedView } from './themed-view';
++
++import { Spacing } from '@/constants/theme';
++
++type HintRowProps = {
++  title?: string;
++  hint?: ReactNode;
++};
++
++export function HintRow({ title = 'Try editing', hint = 'app/index.tsx' }: HintRowProps) {
++  return (
++    <View style={styles.stepRow}>
++      <ThemedText type="small">{title}</ThemedText>
++      <ThemedView type="backgroundSelected" style={styles.codeSnippet}>
++        <ThemedText themeColor="textSecondary">{hint}</ThemedText>
++      </ThemedView>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  stepRow: {
++    flexDirection: 'row',
++    justifyContent: 'space-between',
++  },
++  codeSnippet: {
++    borderRadius: Spacing.two,
++    paddingVertical: Spacing.half,
++    paddingHorizontal: Spacing.two,
++  },
++});
+diff --git a/src/components/themed-text.tsx b/src/components/themed-text.tsx
+new file mode 100644
+index 0000000..538510e
+--- /dev/null
++++ b/src/components/themed-text.tsx
+@@ -0,0 +1,57 @@
++import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
++
++import { Fonts, ThemeColor } from '@/constants/theme';
++import { useTheme } from '@/hooks/use-theme';
++
++export type ThemedTextProps = TextProps & {
++  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
++  themeColor?: ThemeColor;
++};
++
++export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
++  const theme = useTheme();
++
++  return <Text style={[{ color: theme[themeColor ?? 'text'] }, styles[type], style]} {...rest} />;
++}
++
++const styles = StyleSheet.create({
++  small: {
++    fontSize: 14,
++    lineHeight: 20,
++    fontWeight: 500,
++  },
++  smallBold: {
++    fontSize: 14,
++    lineHeight: 20,
++    fontWeight: 700,
++  },
++  default: {
++    fontSize: 16,
++    lineHeight: 24,
++    fontWeight: 500,
++  },
++  title: {
++    fontSize: 48,
++    fontWeight: 600,
++    lineHeight: 52,
++  },
++  subtitle: {
++    fontSize: 32,
++    lineHeight: 44,
++    fontWeight: 600,
++  },
++  link: {
++    lineHeight: 30,
++    fontSize: 14,
++  },
++  linkPrimary: {
++    lineHeight: 30,
++    fontSize: 14,
++    color: '#3c87f7',
++  },
++  code: {
++    fontFamily: Fonts.mono,
++    fontWeight: Platform.select({ android: 700 }) ?? 500,
++    fontSize: 12,
++  },
++});
+diff --git a/src/components/themed-view.tsx b/src/components/themed-view.tsx
+new file mode 100644
+index 0000000..c710df9
+--- /dev/null
++++ b/src/components/themed-view.tsx
+@@ -0,0 +1,16 @@
++import { View, type ViewProps } from 'react-native';
++
++import { ThemeColor } from '@/constants/theme';
++import { useTheme } from '@/hooks/use-theme';
++
++export type ThemedViewProps = ViewProps & {
++  lightColor?: string;
++  darkColor?: string;
++  type?: ThemeColor;
++};
++
++export function ThemedView({ style, lightColor, darkColor, type, ...otherProps }: ThemedViewProps) {
++  const theme = useTheme();
++
++  return <View style={[{ backgroundColor: theme[type ?? 'background'] }, style]} {...otherProps} />;
++}
+diff --git a/src/components/ui/collapsible.tsx b/src/components/ui/collapsible.tsx
+new file mode 100644
+index 0000000..d0d745b
+--- /dev/null
++++ b/src/components/ui/collapsible.tsx
+@@ -0,0 +1,65 @@
++import { SymbolView } from 'expo-symbols';
++import { PropsWithChildren, useState } from 'react';
++import { Pressable, StyleSheet } from 'react-native';
++import Animated, { FadeIn } from 'react-native-reanimated';
++
++import { ThemedText } from '@/components/themed-text';
++import { ThemedView } from '@/components/themed-view';
++import { Spacing } from '@/constants/theme';
++import { useTheme } from '@/hooks/use-theme';
++
++export function Collapsible({ children, title }: PropsWithChildren & { title: string }) {
++  const [isOpen, setIsOpen] = useState(false);
++  const theme = useTheme();
++
++  return (
++    <ThemedView>
++      <Pressable
++        style={({ pressed }) => [styles.heading, pressed && styles.pressedHeading]}
++        onPress={() => setIsOpen((value) => !value)}>
++        <ThemedView type="backgroundElement" style={styles.button}>
++          <SymbolView
++            name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
++            size={14}
++            weight="bold"
++            tintColor={theme.text}
++            style={{ transform: [{ rotate: isOpen ? '-90deg' : '90deg' }] }}
++          />
++        </ThemedView>
++
++        <ThemedText type="small">{title}</ThemedText>
++      </Pressable>
++      {isOpen && (
++        <Animated.View entering={FadeIn.duration(200)}>
++          <ThemedView type="backgroundElement" style={styles.content}>
++            {children}
++          </ThemedView>
++        </Animated.View>
++      )}
++    </ThemedView>
++  );
++}
++
++const styles = StyleSheet.create({
++  heading: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: Spacing.two,
++  },
++  pressedHeading: {
++    opacity: 0.7,
++  },
++  button: {
++    width: Spacing.four,
++    height: Spacing.four,
++    borderRadius: 12,
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  content: {
++    marginTop: Spacing.three,
++    borderRadius: Spacing.three,
++    marginLeft: Spacing.four,
++    padding: Spacing.four,
++  },
++});
+diff --git a/src/components/web-badge.tsx b/src/components/web-badge.tsx
+new file mode 100644
+index 0000000..6667898
+--- /dev/null
++++ b/src/components/web-badge.tsx
+@@ -0,0 +1,43 @@
++import { version } from 'expo/package.json';
++import { Image } from 'expo-image';
++import { useColorScheme, StyleSheet } from 'react-native';
++
++import { ThemedText } from './themed-text';
++import { ThemedView } from './themed-view';
++
++import { Spacing } from '@/constants/theme';
++
++export function WebBadge() {
++  const scheme = useColorScheme();
++
++  return (
++    <ThemedView style={styles.container}>
++      <ThemedText type="code" themeColor="textSecondary" style={styles.versionText}>
++        v{version}
++      </ThemedText>
++      <Image
++        source={
++          scheme === 'dark'
++            ? require('@/assets/images/expo-badge-white.png')
++            : require('@/assets/images/expo-badge.png')
++        }
++        style={styles.badgeImage}
++      />
++    </ThemedView>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    padding: Spacing.five,
++    alignItems: 'center',
++    gap: Spacing.two,
++  },
++  versionText: {
++    textAlign: 'center',
++  },
++  badgeImage: {
++    width: 123,
++    aspectRatio: 123 / 24,
++  },
++});
+diff --git a/src/constants/theme.ts b/src/constants/theme.ts
+new file mode 100644
+index 0000000..ea2a30d
+--- /dev/null
++++ b/src/constants/theme.ts
+@@ -0,0 +1,65 @@
++/**
++ * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
++ * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://unistyl.es/), etc.
++ */
++
++import '@/global.css';
++
++import { Platform } from 'react-native';
++
++export const Colors = {
++  light: {
++    text: '#000000',
++    background: '#ffffff',
++    backgroundElement: '#F0F0F3',
++    backgroundSelected: '#E0E1E6',
++    textSecondary: '#60646C',
++  },
++  dark: {
++    text: '#ffffff',
++    background: '#000000',
++    backgroundElement: '#212225',
++    backgroundSelected: '#2E3135',
++    textSecondary: '#B0B4BA',
++  },
++} as const;
++
++export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
++
++export const Fonts = Platform.select({
++  ios: {
++    /** iOS `UIFontDescriptorSystemDesignDefault` */
++    sans: 'system-ui',
++    /** iOS `UIFontDescriptorSystemDesignSerif` */
++    serif: 'ui-serif',
++    /** iOS `UIFontDescriptorSystemDesignRounded` */
++    rounded: 'ui-rounded',
++    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
++    mono: 'ui-monospace',
++  },
++  default: {
++    sans: 'normal',
++    serif: 'serif',
++    rounded: 'normal',
++    mono: 'monospace',
++  },
++  web: {
++    sans: 'var(--font-display)',
++    serif: 'var(--font-serif)',
++    rounded: 'var(--font-rounded)',
++    mono: 'var(--font-mono)',
++  },
++});
++
++export const Spacing = {
++  half: 2,
++  one: 4,
++  two: 8,
++  three: 16,
++  four: 24,
++  five: 32,
++  six: 64,
++} as const;
++
++export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
++export const MaxContentWidth = 800;
+diff --git a/src/global.css b/src/global.css
+new file mode 100644
+index 0000000..c8fe503
+--- /dev/null
++++ b/src/global.css
+@@ -0,0 +1,9 @@
++:root {
++  --font-display:
++    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
++    Segoe UI Symbol, Noto Color Emoji;
++  --font-mono:
++    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
++  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
++  --font-serif: Georgia, 'Times New Roman', serif;
++}
+diff --git a/src/hooks/use-color-scheme.ts b/src/hooks/use-color-scheme.ts
+new file mode 100644
+index 0000000..17e3c63
+--- /dev/null
++++ b/src/hooks/use-color-scheme.ts
+@@ -0,0 +1 @@
++export { useColorScheme } from 'react-native';
+diff --git a/src/hooks/use-color-scheme.web.ts b/src/hooks/use-color-scheme.web.ts
+new file mode 100644
+index 0000000..7eb1c1b
+--- /dev/null
++++ b/src/hooks/use-color-scheme.web.ts
+@@ -0,0 +1,21 @@
++import { useEffect, useState } from 'react';
++import { useColorScheme as useRNColorScheme } from 'react-native';
++
++/**
++ * To support static rendering, this value needs to be re-calculated on the client side for web
++ */
++export function useColorScheme() {
++  const [hasHydrated, setHasHydrated] = useState(false);
++
++  useEffect(() => {
++    setHasHydrated(true);
++  }, []);
++
++  const colorScheme = useRNColorScheme();
++
++  if (hasHydrated) {
++    return colorScheme;
++  }
++
++  return 'light';
++}
+diff --git a/src/hooks/use-theme.ts b/src/hooks/use-theme.ts
+new file mode 100644
+index 0000000..e67827a
+--- /dev/null
++++ b/src/hooks/use-theme.ts
+@@ -0,0 +1,14 @@
++/**
++ * Learn more about light and dark modes:
++ * https://docs.expo.dev/guides/color-schemes/
++ */
++
++import { Colors } from '@/constants/theme';
++import { useColorScheme } from '@/hooks/use-color-scheme';
++
++export function useTheme() {
++  const scheme = useColorScheme();
++  const theme = scheme === 'dark' ? 'dark' : 'light';
++
++  return Colors[theme];
++}
+diff --git a/tsconfig.json b/tsconfig.json
+new file mode 100644
+index 0000000..2e9a669
+--- /dev/null
++++ b/tsconfig.json
+@@ -0,0 +1,20 @@
++{
++  "extends": "expo/tsconfig.base",
++  "compilerOptions": {
++    "strict": true,
++    "paths": {
++      "@/*": [
++        "./src/*"
++      ],
++      "@/assets/*": [
++        "./assets/*"
++      ]
++    }
++  },
++  "include": [
++    "**/*.ts",
++    "**/*.tsx",
++    ".expo/types/**/*.ts",
++    "expo-env.d.ts"
++  ]
++}
+
