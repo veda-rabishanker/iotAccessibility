@@ -15,6 +15,7 @@ if str(_DETECTOR_DIR) not in sys.path:
     sys.path.insert(0, str(_DETECTOR_DIR))
 
 from failure_reason import quiet_failure_reason
+from hold_memory import apply_hold_memory
 from policy import Box, Cue, PolicyState, decide
 from quality import frame_is_usable
 from webcam import open_webcam
@@ -22,6 +23,7 @@ from yolo import letterbox, predictions_to_boxes
 
 WEIGHT_PATH = _DETECTOR_DIR / "weights" / "yolo11n.onnx"
 INFER_PERIOD = 0.125
+STALL_FAILED_READS = 8
 MODES = ("general", "crosswalk", "depth")
 QUIET = Cue(kind="quiet", speech="", reason="camera-missing", side=None, class_name=None)
 
@@ -50,6 +52,7 @@ class Pipeline:
         self._infer_thread: threading.Thread | None = None
         self._infer_stop = threading.Event()
         self._policy_state = PolicyState()
+        self._last_obstacle: Cue | None = None
         self._session = None
         self._input_name: str | None = None
         self._started = False
@@ -87,7 +90,7 @@ class Pipeline:
             self._frame = None
             self._jpeg = None
             self._camera_opened = False
-            self._cue = _quiet("esp32")
+            self._store_cue(_quiet("esp32"))
             self._inference_ms = 0
 
     def snapshot(self) -> dict:
@@ -167,12 +170,23 @@ class Pipeline:
                 except Exception:
                     pass
             return
+        failed_reads = 0
         while not self._capture_stop.is_set():
             ok, frame = capture.read()
             if ok and frame is not None:
+                failed_reads = 0
                 with self._lock:
                     self._frame = frame
+                    self._camera_opened = True
             else:
+                failed_reads += 1
+                if failed_reads >= STALL_FAILED_READS:
+                    with self._lock:
+                        self._frame = None
+                        self._jpeg = None
+                        self._camera_opened = False
+                        self._store_cue(_quiet("camera-missing"))
+                        self._inference_ms = 0
                 self._capture_stop.wait(0.01)
 
     def _inference_loop(self) -> None:
@@ -191,7 +205,7 @@ class Pipeline:
                     camera_opened=opened,
                 )
                 with self._lock:
-                    self._cue = _quiet(reason)
+                    self._store_cue(_quiet(reason))
                     self._inference_ms = 0
             remaining = INFER_PERIOD - (time.monotonic() - started)
             if remaining > 0:
@@ -206,7 +220,7 @@ class Pipeline:
             self._publish(_quiet("esp32"), 0, None, [])
             return
         if frame is None or not opened:
-            self._publish(_quiet("camera-missing"), 0, frame, [])
+            self._publish(_quiet("camera-missing"), 0, None, [])
             return
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -238,6 +252,11 @@ class Pipeline:
             time.monotonic(),
             self._policy_state,
         )
+        with self._lock:
+            live = self._camera_opened and self._frame is not None
+        if not live:
+            self._publish(_quiet("camera-missing"), 0, None, [])
+            return
         self._publish(cue, inference_ms, frame, boxes)
 
     def _load_session(self):
@@ -257,6 +276,11 @@ class Pipeline:
             self._input_name = None
             return None
 
+    def _store_cue(self, cue: Cue) -> None:
+        """Apply hold memory and set the published cue. Caller holds ``_lock``."""
+        published, self._last_obstacle = apply_hold_memory(cue, self._last_obstacle)
+        self._cue = published
+
     def _publish(
         self,
         cue: Cue,
@@ -264,16 +288,27 @@ class Pipeline:
         frame: np.ndarray | None,
         boxes: list[Box],
     ) -> None:
+        with self._lock:
+            stalled = self._source != "esp32" and (
+                not self._camera_opened or self._frame is None
+            )
         jpeg = None
-        if frame is not None:
+        if frame is not None and not stalled:
             annotated = _draw_boxes(frame, boxes)
             ok, encoded = cv2.imencode(".jpg", annotated)
             if ok:
                 jpeg = encoded.tobytes()
         with self._lock:
-            self._cue = cue
+            if self._source != "esp32" and (not self._camera_opened or self._frame is None):
+                self._store_cue(_quiet("camera-missing"))
+                self._inference_ms = 0
+                self._jpeg = None
+                return
+            self._store_cue(cue)
             self._inference_ms = inference_ms
-            if jpeg is not None:
+            if cue.reason == "camera-missing" or frame is None:
+                self._jpeg = None
+            elif jpeg is not None:
                 self._jpeg = jpeg
 
 

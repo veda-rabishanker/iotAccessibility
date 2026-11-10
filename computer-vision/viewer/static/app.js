@@ -109,7 +109,7 @@
       return "No webcam is available.";
     }
     if (reason === "holding") {
-      return lastSpeech || "Nothing in your path.";
+      return speech || lastSpeech;
     }
     if (reason === "pending") {
       return "Watching.";
