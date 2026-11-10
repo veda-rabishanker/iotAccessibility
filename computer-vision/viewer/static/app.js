@@ -84,6 +84,9 @@
     if (speech) {
       lastSpeech = speech;
     }
+    if (reason === "esp32" && !speech) {
+      return "";
+    }
     if (mode === "crosswalk") {
       return speech ? CROSSWALK_LINE + "\n" + speech : CROSSWALK_LINE;
     }
@@ -100,6 +103,9 @@
       return "Detector weights are not on this computer yet.";
     }
     if (reason === "camera-missing") {
+      if (sourceKind === "esp32") {
+        return "";
+      }
       return "No webcam is available.";
     }
     if (reason === "holding") {

@@ -14,6 +14,7 @@ _DETECTOR_DIR = Path(__file__).resolve().parent
 if str(_DETECTOR_DIR) not in sys.path:
     sys.path.insert(0, str(_DETECTOR_DIR))
 
+from failure_reason import quiet_failure_reason
 from policy import Box, Cue, PolicyState, decide
 from quality import frame_is_usable
 from webcam import open_webcam
@@ -86,7 +87,7 @@ class Pipeline:
             self._frame = None
             self._jpeg = None
             self._camera_opened = False
-            self._cue = _quiet("camera-missing")
+            self._cue = _quiet("esp32")
             self._inference_ms = 0
 
     def snapshot(self) -> dict:
@@ -181,7 +182,16 @@ class Pipeline:
                 self._infer_once()
             except Exception:
                 with self._lock:
-                    self._cue = _quiet("camera-missing")
+                    frame = self._frame
+                    opened = self._camera_opened
+                    source = self._source
+                reason = quiet_failure_reason(
+                    source=source,
+                    has_frame=frame is not None,
+                    camera_opened=opened,
+                )
+                with self._lock:
+                    self._cue = _quiet(reason)
                     self._inference_ms = 0
             remaining = INFER_PERIOD - (time.monotonic() - started)
             if remaining > 0:
@@ -192,8 +202,11 @@ class Pipeline:
             frame = None if self._frame is None else self._frame.copy()
             opened = self._camera_opened
             source = self._source
-        if source != "webcam" or frame is None or not opened:
-            self._publish(_quiet("camera-missing"), 0, None if source != "webcam" else frame, [])
+        if source == "esp32":
+            self._publish(_quiet("esp32"), 0, None, [])
+            return
+        if frame is None or not opened:
+            self._publish(_quiet("camera-missing"), 0, frame, [])
             return
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
