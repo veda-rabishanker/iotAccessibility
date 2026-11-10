@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download Ultralytics YOLOv8n ONNX and verify the pinned SHA256."""
+"""Download Ultralytics YOLO11n ONNX and verify the pinned SHA256."""
 
 from __future__ import annotations
 
@@ -9,14 +9,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-EXPECTED_SHA256 = ""
+EXPECTED_SHA256 = "634279b40c07c6391472c51ad45b81ebc48706a9a1fe72dd3396322acd0c053b"
 
 WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
-WEIGHT_PATH = WEIGHTS_DIR / "yolov8n.onnx"
-URLS = (
-    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.onnx",
-    "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.onnx",
-)
+WEIGHT_PATH = WEIGHTS_DIR / "yolo11n.onnx"
+URL = "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.onnx"
 EXPECTED_OUTPUT_SHAPE = [1, 84, 8400]
 USER_AGENT = "StriderVisionViewer/1.0"
 
@@ -86,19 +83,13 @@ def _output_shape(path: Path) -> list[int]:
 
 def main() -> int:
     if not WEIGHT_PATH.is_file():
-        last_status = 0
-        fetched = False
-        for url in URLS:
-            print(f"Downloading {url}", flush=True)
-            last_status = _download(url, WEIGHT_PATH)
-            if last_status == 200 and _looks_like_onnx(WEIGHT_PATH):
-                fetched = True
-                break
-            print(f"Download failed (HTTP {last_status}) from {url}", flush=True)
+        print(f"Downloading {URL}", flush=True)
+        status = _download(URL, WEIGHT_PATH)
+        if status != 200 or not _looks_like_onnx(WEIGHT_PATH):
+            print(f"Download failed (HTTP {status}) from {URL}", flush=True)
             if WEIGHT_PATH.is_file():
                 WEIGHT_PATH.unlink()
-        if not fetched:
-            print(f"Failed to download YOLOv8n ONNX (last HTTP {last_status}).", file=sys.stderr)
+            print(f"Failed to download YOLO11n ONNX (HTTP {status}).", file=sys.stderr)
             return 1
 
     digest = _sha256(WEIGHT_PATH)

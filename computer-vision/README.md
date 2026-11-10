@@ -19,7 +19,7 @@ python -m pip install -r computer-vision/requirements.txt
 python computer-vision/detector/download_model.py
 ```
 
-`download_model.py` fetches Ultralytics YOLOv8n ONNX into `computer-vision/detector/weights/yolov8n.onnx` and checks a pinned SHA256. That folder is gitignored. Do not commit the `.onnx` file.
+`download_model.py` fetches Ultralytics YOLO11n ONNX into `computer-vision/detector/weights/yolo11n.onnx` and checks a pinned SHA256. Ultralytics does not publish a YOLOv8n ONNX release asset; YOLO11n with a 640 input produces the same `[1, 84, 8400]` COCO layout the detector parser expects. That folder is gitignored. Do not commit the `.onnx` file.
 
 ## Watch the webcam cue
 

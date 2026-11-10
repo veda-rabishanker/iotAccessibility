@@ -19,7 +19,7 @@ from quality import frame_is_usable
 from webcam import open_webcam
 from yolo import letterbox, predictions_to_boxes
 
-WEIGHT_PATH = _DETECTOR_DIR / "weights" / "yolov8n.onnx"
+WEIGHT_PATH = _DETECTOR_DIR / "weights" / "yolo11n.onnx"
 INFER_PERIOD = 0.125
 MODES = ("general", "crosswalk", "depth")
 QUIET = Cue(kind="quiet", speech="", reason="camera-missing", side=None, class_name=None)

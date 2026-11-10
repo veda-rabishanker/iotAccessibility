@@ -11,7 +11,7 @@ python -m pip install -r computer-vision/requirements.txt
 python computer-vision/detector/download_model.py
 ```
 
-`download_model.py` writes `computer-vision/detector/weights/yolov8n.onnx`. That directory is gitignored. The server still starts if the weight file is missing or no webcam opens.
+`download_model.py` writes `computer-vision/detector/weights/yolo11n.onnx` (Ultralytics YOLO11n ONNX; the YOLOv8n ONNX asset is not published). A 640 input yields `[1, 84, 8400]`, matching the parser tests. That directory is gitignored. The server still starts if the weight file is missing or no webcam opens.
 
 ## Run
 
