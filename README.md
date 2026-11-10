@@ -19,3 +19,5 @@ Scan the QR code with Expo Go, or press `i` / `a` for simulators.
 ## Not in this shell yet
 
 Product routes, NativeWind, Firebase, device/camera layer, and analysis — added when needed.
+
+Computer vision work for the collar ESP32-CAM lives in [`computer-vision/`](computer-vision/README.md), separate from this Expo app.

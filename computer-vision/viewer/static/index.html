@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strider vision</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Strider vision</h1>
+      <p class="tagline">Live collar camera</p>
+    </div>
+    <p id="status-pill" class="pill" data-state="connecting" role="status" aria-live="polite" aria-atomic="true">Connecting</p>
+    <p class="stream-url">
+      <span class="eyebrow">Stream</span>
+      <span id="stream-url"></span>
+    </p>
+  </header>
+
+  <main>
+    <form id="camera-form" autocomplete="off">
+      <label for="camera-url">Camera address</label>
+      <div class="controls">
+        <input
+          id="camera-url"
+          name="url"
+          type="text"
+          inputmode="url"
+          spellcheck="false"
+          autocapitalize="off"
+          placeholder="http://192.168.4.1 or http://192.168.1.20:81/stream"
+          required>
+        <button type="submit">Connect</button>
+      </div>
+    </form>
+
+    <section class="stage" aria-label="Live camera view">
+      <img id="video" alt="Live camera" aria-describedby="detail">
+    </section>
+    <p id="detail" class="detail" role="status" aria-live="polite" hidden></p>
+  </main>
+
+  <noscript>
+    <p class="detail">This viewer needs JavaScript to connect to the camera.</p>
+  </noscript>
+  <script src="/static/app.js"></script>
+</body>
+</html>
