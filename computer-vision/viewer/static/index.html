@@ -10,7 +10,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Strider vision</h1>
-      <p class="tagline">Live collar camera</p>
+      <p class="tagline">Bench webcam for the collar camera</p>
     </div>
     <p id="status-pill" class="pill" data-state="connecting" role="status" aria-live="polite" aria-atomic="true">Connecting</p>
     <p class="stream-url">
@@ -20,6 +20,30 @@
   </header>
 
   <main>
+    <div class="toolbar">
+      <fieldset class="source-pick">
+        <legend>Video source</legend>
+        <div class="choice-row">
+          <label class="choice" for="source-webcam">
+            <input type="radio" id="source-webcam" name="source" value="webcam" checked>
+            Webcam
+          </label>
+          <label class="choice" for="source-esp32">
+            <input type="radio" id="source-esp32" name="source" value="esp32">
+            ESP32
+          </label>
+        </div>
+      </fieldset>
+      <div class="mode-pick">
+        <label for="mode">Guidance mode</label>
+        <select id="mode" name="mode">
+          <option value="general" selected>General guidance</option>
+          <option value="crosswalk">Crosswalk assistance</option>
+          <option value="depth">Depth perception</option>
+        </select>
+      </div>
+    </div>
+
     <form id="camera-form" autocomplete="off">
       <label for="camera-url">Camera address</label>
       <div class="controls">
@@ -36,8 +60,10 @@
       </div>
     </form>
 
+    <p id="cue" class="cue" role="status" aria-live="polite" aria-atomic="true"></p>
+
     <section class="stage" aria-label="Live camera view">
-      <img id="video" alt="Live camera" aria-describedby="detail">
+      <img id="video" alt="Live camera" aria-describedby="cue detail">
     </section>
     <p id="detail" class="detail" role="status" aria-live="polite" hidden></p>
   </main>

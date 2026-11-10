@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Local web viewer that proxies an ESP32-CAM MJPEG stream.
+"""Local web viewer for the laptop webcam cue and the ESP32-CAM proxy.
 
-Standard library only. Bind to 127.0.0.1 and forward the camera to the page
-so the browser can show the stream without CORS.
+Bind to 127.0.0.1. The webcam path runs the detector. ESP32 bytes still go
+through the existing proxy so the browser can show that stream without CORS.
 """
 
 from __future__ import annotations
@@ -20,10 +20,18 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 HOST = "127.0.0.1"
 DEFAULT_CAMERA = "http://192.168.4.1"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+DETECTOR_DIR = Path(__file__).resolve().parent.parent / "detector"
 CHUNK_SIZE = 8192
 STREAM_TIMEOUT = 10
 PROBE_TIMEOUT = 2
 FRAME_FRESH_SECONDS = 8
+WEBCAM_BOUNDARY = "frame"
+MODES = ("general", "crosswalk", "depth")
+
+if str(DETECTOR_DIR) not in sys.path:
+    sys.path.insert(0, str(DETECTOR_DIR))
+
+from pipeline import PIPELINE  # noqa: E402
 
 UNREACHABLE = (
     "Camera unreachable. Join the Strider-CAM Wi-Fi, or enter the camera address."
@@ -302,11 +310,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._serve_path(STATIC_DIR / "index.html", CONTENT_TYPES[".html"])
             elif path == "/stream":
                 self._proxy_stream()
+            elif path == "/webcam":
+                self._webcam_stream()
             elif path == "/api/health":
                 self._send_json(200, health_report())
             elif path == "/api/camera":
                 stream_url, base_url = CAMERA.get()
                 self._send_json(200, {"streamUrl": stream_url, "baseUrl": base_url})
+            elif path == "/api/cue":
+                self._send_cue()
             elif path.startswith("/static/"):
                 resolved = static_file(path)
                 if resolved is None:
@@ -322,10 +334,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
         try:
-            if path != "/api/camera":
+            if path == "/api/camera":
+                self._set_camera()
+            elif path == "/api/source":
+                self._set_source()
+            elif path == "/api/mode":
+                self._set_mode()
+            else:
                 self._send_text(404, "Not found\n")
                 return
-            self._set_camera()
         except CLIENT_GONE:
             return
 
@@ -353,6 +370,111 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(400, {"ok": False, "detail": str(exc)})
             return
         self._send_json(200, {"streamUrl": stream_url, "baseUrl": base_url})
+
+    def _read_json_object(self) -> dict | None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return None
+        if length < 0 or length > 16384:
+            return None
+        raw = self.rfile.read(length) if length else b""
+        parsed = _json_dict(raw)
+        return parsed
+
+    def _set_source(self) -> None:
+        data = self._read_json_object()
+        if data is None:
+            self._send_json(400, {"ok": False, "detail": "Expected a JSON body."})
+            return
+        kind = data.get("kind")
+        if kind == "webcam":
+            index = data.get("index", 0)
+            if not isinstance(index, int) or isinstance(index, bool):
+                self._send_json(400, {"ok": False, "detail": "Expected kind webcam with an integer index."})
+                return
+            PIPELINE.set_source_webcam(index)
+            self._send_json(200, {"ok": True, "kind": "webcam", "index": index})
+            return
+        if kind == "esp32":
+            url = data.get("url")
+            if not isinstance(url, str):
+                self._send_json(400, {"ok": False, "detail": "Expected kind esp32 with a url."})
+                return
+            try:
+                stream_url, base_url = CAMERA.set_url(url)
+            except CameraError as exc:
+                self._send_json(400, {"ok": False, "detail": str(exc)})
+                return
+            PIPELINE.set_source_esp32()
+            self._send_json(
+                200, {"ok": True, "kind": "esp32", "streamUrl": stream_url, "baseUrl": base_url}
+            )
+            return
+        self._send_json(400, {"ok": False, "detail": "kind must be webcam or esp32."})
+
+    def _set_mode(self) -> None:
+        data = self._read_json_object()
+        if data is None:
+            self._send_json(400, {"ok": False, "detail": "Expected a JSON body with a mode."})
+            return
+        mode = data.get("mode")
+        if mode not in MODES:
+            self._send_json(400, {"ok": False, "detail": "mode must be general, crosswalk, or depth."})
+            return
+        PIPELINE.set_mode(mode)
+        self._send_json(200, {"ok": True, "mode": mode})
+
+    def _send_cue(self) -> None:
+        snap = PIPELINE.snapshot()
+        self._send_json(
+            200,
+            {
+                "kind": snap["kind"],
+                "speech": snap["speech"],
+                "reason": snap["reason"],
+                "side": snap["side"],
+                "class_name": snap["class_name"],
+                "inference_ms": snap["inference_ms"],
+                "mode": snap["mode"],
+            },
+        )
+
+    def _webcam_stream(self) -> None:
+        snap = PIPELINE.snapshot()
+        jpeg = snap.get("jpeg")
+        if not jpeg:
+            self._send_text(503, "No webcam frame yet.\n")
+            return
+        self.send_response(200)
+        self.send_header(
+            "Content-Type", "multipart/x-mixed-replace; boundary=" + WEBCAM_BOUNDARY
+        )
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        marker = ("--" + WEBCAM_BOUNDARY + "\r\n").encode("ascii")
+        try:
+            while True:
+                snap = PIPELINE.snapshot()
+                jpeg = snap.get("jpeg")
+                if not jpeg:
+                    time.sleep(0.05)
+                    continue
+                self.wfile.write(marker)
+                self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                self.wfile.write(("Content-Length: %d\r\n\r\n" % len(jpeg)).encode("ascii"))
+                self.wfile.write(jpeg)
+                self.wfile.write(b"\r\n")
+                self.wfile.flush()
+                time.sleep(0.05)
+        except CLIENT_GONE:
+            return
+        except OSError as exc:
+            if _client_disconnected(exc):
+                return
+            return
 
     def _proxy_stream(self) -> None:
         stream_url, _base = CAMERA.get()
@@ -498,6 +620,7 @@ def main() -> None:
     except OSError as exc:
         raise SystemExit(f"Could not bind http://{HOST}:{port}: {exc}") from exc
 
+    PIPELINE.start()
     print(f"Viewer at http://{HOST}:{port}", flush=True)
     print(f"Camera stream {stream_url}", flush=True)
     try:
