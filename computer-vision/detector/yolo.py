@@ -2,8 +2,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from labels import walker_class
 from policy import Box
+from vocab import COCO, ClassInfo, Vocabulary
 
 CONFIDENCE_MIN = 0.45
 NMS_IOU = 0.5
@@ -42,40 +42,63 @@ def letterbox(image: np.ndarray, size: int = 640) -> Letterbox:
     )
 
 
-def predictions_to_boxes(output: np.ndarray, letter: Letterbox) -> list[Box]:
-    pred = np.asarray(output)
+def predictions_to_boxes(
+    output: np.ndarray, letter: Letterbox, vocab: Vocabulary = COCO
+) -> list[Box]:
+    """Turn a raw detector tensor into walker boxes in source-frame pixels.
+
+    Accepts the one-to-many head ``[1, 4 + K, N]`` (cx, cy, w, h, K scores;
+    NMS applied here) and the end-to-end head ``[1, M, 6]``
+    (x0, y0, x1, y1, score, class), both in letterboxed network pixels.
+    """
+    pred = np.asarray(output, dtype=np.float32)
     if pred.ndim == 3:
         pred = pred[0]
+    if pred.ndim != 2:
+        return []
+    if pred.shape[1] == 6 and pred.shape[0] != 4 + vocab.size:
+        return _end_to_end_boxes(pred, letter, vocab)
+    scores = pred[4:]
+    if scores.shape[0] == 0:
+        return []
+    class_ids = scores.argmax(axis=0)
+    confidences = scores[class_ids, np.arange(scores.shape[1])]
     candidates: list[Box] = []
-    for index in range(pred.shape[1]):
-        scores = pred[4:, index]
-        class_id = int(scores.argmax())
-        confidence = float(scores[class_id])
+    for index in np.nonzero(confidences >= CONFIDENCE_MIN)[0]:
+        info = vocab.lookup(int(class_ids[index]))
+        if info is None:
+            continue
+        cx, cy, w, h = (float(v) for v in pred[:4, index])
+        x0, y0, x1, y1 = _map_corners(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2, letter)
+        candidates.append(_make_box(info, float(confidences[index]), x0, y0, x1, y1))
+    return _nms(candidates)
+
+
+def _end_to_end_boxes(pred: np.ndarray, letter: Letterbox, vocab: Vocabulary) -> list[Box]:
+    boxes: list[Box] = []
+    for row in pred:
+        confidence = float(row[4])
         if confidence < CONFIDENCE_MIN:
             continue
-        mapped = walker_class(class_id)
-        if mapped is None:
+        info = vocab.lookup(int(row[5]))
+        if info is None:
             continue
-        class_name, rank, _spoken = mapped
-        x0, y0, x1, y1 = _map_box(
-            float(pred[0, index]),
-            float(pred[1, index]),
-            float(pred[2, index]),
-            float(pred[3, index]),
-            letter,
-        )
-        candidates.append(
-            Box(
-                class_name=class_name,
-                rank=rank,
-                confidence=confidence,
-                x0=x0,
-                y0=y0,
-                x1=x1,
-                y1=y1,
-            )
-        )
-    return _nms(candidates)
+        x0, y0, x1, y1 = _map_corners(*(float(v) for v in row[:4]), letter)
+        boxes.append(_make_box(info, confidence, x0, y0, x1, y1))
+    return _nms(boxes)
+
+
+def _make_box(info: ClassInfo, confidence: float, x0: float, y0: float, x1: float, y1: float) -> Box:
+    return Box(
+        class_name=info.class_name,
+        rank=info.rank,
+        confidence=round(confidence, 3),
+        x0=x0,
+        y0=y0,
+        x1=x1,
+        y1=y1,
+        mover=info.mover,
+    )
 
 
 def _resize_nearest(image: np.ndarray, new_h: int, new_w: int) -> np.ndarray:
@@ -87,26 +110,19 @@ def _resize_nearest(image: np.ndarray, new_h: int, new_w: int) -> np.ndarray:
     return image[row_idx[:, None], col_idx]
 
 
-def _map_box(
-    cx: float,
-    cy: float,
-    width: float,
-    height: float,
-    letter: Letterbox,
+def _map_corners(
+    x0: float, y0: float, x1: float, y1: float, letter: Letterbox
 ) -> tuple[float, float, float, float]:
-    x_center = (cx - letter.pad_x) / letter.scale
-    y_center = (cy - letter.pad_y) / letter.scale
-    box_w = width / letter.scale
-    box_h = height / letter.scale
-    x0 = x_center - box_w / 2
-    y0 = y_center - box_h / 2
-    x1 = x_center + box_w / 2
-    y1 = y_center + box_h / 2
-    x0 = min(max(x0, 0.0), float(letter.source_width))
-    x1 = min(max(x1, 0.0), float(letter.source_width))
-    y0 = min(max(y0, 0.0), float(letter.source_height))
-    y1 = min(max(y1, 0.0), float(letter.source_height))
-    return x0, y0, x1, y1
+    def unmap(x: float, y: float) -> tuple[float, float]:
+        sx = (x - letter.pad_x) / letter.scale
+        sy = (y - letter.pad_y) / letter.scale
+        sx = min(max(sx, 0.0), float(letter.source_width))
+        sy = min(max(sy, 0.0), float(letter.source_height))
+        return sx, sy
+
+    a = unmap(x0, y0)
+    b = unmap(x1, y1)
+    return a[0], a[1], b[0], b[1]
 
 
 def _iou(a: Box, b: Box) -> float:

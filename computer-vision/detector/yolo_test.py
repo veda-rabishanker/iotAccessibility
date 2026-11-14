@@ -89,3 +89,33 @@ def test_letterbox_maps_network_center_to_original_center():
     center_y = (boxes[0].y0 + boxes[0].y1) / 2
     assert abs(center_x - 320) < 1
     assert abs(center_y - 240) < 1
+
+
+def test_walk_vocabulary_reads_class_count_from_tensor():
+    from vocab import WALK, walk_prompts
+
+    letter = _letter_640x480()
+    output = np.zeros((1, 4 + WALK.size, 8400))
+    bollard = walk_prompts().index("bollard")
+    _set_column(output, 0, cx=320, cy=400, width=30, height=160, class_id=bollard, score=0.7)
+
+    boxes = predictions_to_boxes(output, letter, WALK)
+
+    assert len(boxes) == 1
+    assert boxes[0].class_name == "pole"
+    assert boxes[0].mover is False
+
+
+def test_end_to_end_head_rows_are_corners():
+    letter = _letter_640x480()
+    output = np.zeros((1, 300, 6))
+    output[0, 0] = [40, 380, 140, 540, 0.9, 0]  # person, letterbox pixels
+    output[0, 1] = [0, 80, 50, 120, 0.95, 56]  # chair, dropped
+
+    boxes = predictions_to_boxes(output, letter)
+
+    assert len(boxes) == 1
+    assert boxes[0].class_name == "person"
+    assert boxes[0].mover is True
+    assert abs(boxes[0].y0 - 300) < 1
+    assert abs(boxes[0].y1 - 460) < 1

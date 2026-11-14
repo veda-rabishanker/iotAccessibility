@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 detector/weights/
+logs/
+tools/.venv-export/
+tools/.export-cache/
