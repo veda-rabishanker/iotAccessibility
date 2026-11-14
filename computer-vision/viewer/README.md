@@ -1,17 +1,10 @@
 # Strider vision viewer
 
-Local page for watching the laptop webcam detector and the collar ESP32-CAM. The webcam is a bench stand-in for the collar camera. A small Python server serves an annotated webcam MJPEG stream and still proxies the camera's MJPEG stream so the browser can show either on the same origin.
+Local page for watching the walking cue from the laptop webcam or the collar ESP32-CAM. The webcam is a bench stand-in for the collar camera. A small Python server runs the detector and depth models on either source and serves the annotated frames and the cue.
 
 ## Install
 
-From the repository root:
-
-```bash
-python -m pip install -r computer-vision/requirements.txt
-python computer-vision/detector/download_model.py
-```
-
-`download_model.py` writes `computer-vision/detector/weights/yolo11n.onnx` (Ultralytics YOLO11n ONNX; the YOLOv8n ONNX asset is not published). A 640 input yields `[1, 84, 8400]`, matching the parser tests. That directory is gitignored. The server still starts if the weight file is missing or no webcam opens.
+See [`../README.md`](../README.md#install): install `requirements.txt`, run `detector/download_model.py` for the depth model, and export the detectors with `tools/export_models.py`. The server still starts if any weight file is missing or no webcam opens; the cue line says what is missing.
 
 ## Run
 
@@ -33,11 +26,17 @@ The viewer listens on `127.0.0.1` only. Stop it with Ctrl+C. Webcam index 0 is t
 
 ## What the page does
 
-- **Video source** â€” Webcam or ESP32. Webcam is selected on load and loads `/webcam`. ESP32 posts the camera address and loads `/stream`.
-- **Guidance mode** â€” General guidance, Crosswalk assistance, and Depth perception. The mode label changes the page copy. It does not change the detector policy.
-- **Cue line** â€” one text line from `GET /api/cue`, about once a second.
+- **Video source** — Webcam or ESP32. Both run the detector and depth models, and the page loads the annotated frames from `/webcam`. The ESP32 allows one stream connection, so the raw `/stream` proxy is not opened while the detector reads it.
+- **Detector** — YOLOE-26n with Strider's hazard words (default) or YOLO26n (COCO). Switch live to compare.
+- **View** — Boxes, or Depth (near is bright/warm, far is dark). The two grey lines mark the walking corridor the depth check looks at.
+- **Guidance mode** — General guidance, Crosswalk assistance, and Depth perception. It changes the page copy only.
+- **Cue line** — one line from `GET /api/cue`, refreshed twice a second. Under it: distance bucket, confidence, whether the cue came from the detector or depth, and model timings.
+- **Speak cues** — reads each new cue aloud with the browser's speech. The browser needs one click before it may speak.
+- **False alert / Missed it** — writes a mark to the evaluation log with the last spoken cue.
 
-General guidance shows the policy speech, or `Nothing in your path.` when the way is clear. Crosswalk assistance always says lining-up is not estimated from this camera. Depth perception always says steps, curbs, and drop-offs are not estimated from this camera. The page does not report distances or say a crosswalk is safe.
+When nothing is cued, General guidance shows `No obstacle detected. Keep using your cane.` The page never says the path is clear, never reports feet or metres, and never says a crosswalk is safe.
+
+API: `GET /api/cue`, `GET /api/detectors`, `POST /api/source`, `POST /api/mode`, `POST /api/detector {"name"}`, `POST /api/view {"overlay": "boxes"|"depth"}`, `POST /api/mark {"kind": "false-alert"|"missed"}`.
 
 ## Camera address
 

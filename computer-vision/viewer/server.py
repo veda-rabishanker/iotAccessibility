@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Local web viewer for the laptop webcam cue and the ESP32-CAM proxy.
+"""Local web viewer for the walking cue from the laptop webcam or the ESP32-CAM.
 
-Bind to 127.0.0.1. The webcam path runs the detector. ESP32 bytes still go
-through the existing proxy so the browser can show that stream without CORS.
+Bind to 127.0.0.1. Both sources run the detector and depth models; ``/webcam``
+serves the annotated frames for either. ``/stream`` still proxies the raw
+ESP32 bytes, but the camera allows one stream, so the page does not open it
+while the detector is reading the ESP32.
 """
 
 from __future__ import annotations
@@ -319,6 +321,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(200, {"streamUrl": stream_url, "baseUrl": base_url})
             elif path == "/api/cue":
                 self._send_cue()
+            elif path == "/api/detectors":
+                self._send_json(200, {"detectors": PIPELINE.detectors()})
             elif path.startswith("/static/"):
                 resolved = static_file(path)
                 if resolved is None:
@@ -340,6 +344,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._set_source()
             elif path == "/api/mode":
                 self._set_mode()
+            elif path == "/api/detector":
+                self._set_choice("name", PIPELINE.set_detector, "Unknown or unavailable detector.")
+            elif path == "/api/view":
+                self._set_choice("overlay", PIPELINE.set_overlay, "overlay must be boxes or depth.")
+            elif path == "/api/mark":
+                self._set_choice("kind", PIPELINE.mark, "kind must be false-alert or missed.")
             else:
                 self._send_text(404, "Not found\n")
                 return
@@ -406,7 +416,7 @@ class Handler(BaseHTTPRequestHandler):
             except CameraError as exc:
                 self._send_json(400, {"ok": False, "detail": str(exc)})
                 return
-            PIPELINE.set_source_esp32()
+            PIPELINE.set_source_esp32(stream_url)
             self._send_json(
                 200, {"ok": True, "kind": "esp32", "streamUrl": stream_url, "baseUrl": base_url}
             )
@@ -425,20 +435,18 @@ class Handler(BaseHTTPRequestHandler):
         PIPELINE.set_mode(mode)
         self._send_json(200, {"ok": True, "mode": mode})
 
+    def _set_choice(self, field: str, setter, error: str) -> None:
+        data = self._read_json_object()
+        value = data.get(field) if data else None
+        if not isinstance(value, str) or not setter(value):
+            self._send_json(400, {"ok": False, "detail": error})
+            return
+        self._send_json(200, {"ok": True, field: value})
+
     def _send_cue(self) -> None:
         snap = PIPELINE.snapshot()
-        self._send_json(
-            200,
-            {
-                "kind": snap["kind"],
-                "speech": snap["speech"],
-                "reason": snap["reason"],
-                "side": snap["side"],
-                "class_name": snap["class_name"],
-                "inference_ms": snap["inference_ms"],
-                "mode": snap["mode"],
-            },
-        )
+        snap.pop("jpeg", None)
+        self._send_json(200, snap)
 
     def _webcam_stream(self) -> None:
         snap = PIPELINE.snapshot()

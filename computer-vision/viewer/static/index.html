@@ -35,6 +35,23 @@
         </div>
       </fieldset>
       <div class="mode-pick">
+        <label for="detector">Detector</label>
+        <select id="detector" name="detector"></select>
+      </div>
+      <fieldset class="source-pick">
+        <legend>View</legend>
+        <div class="choice-row">
+          <label class="choice" for="view-boxes">
+            <input type="radio" id="view-boxes" name="view" value="boxes" checked>
+            Boxes
+          </label>
+          <label class="choice" for="view-depth">
+            <input type="radio" id="view-depth" name="view" value="depth">
+            Depth
+          </label>
+        </div>
+      </fieldset>
+      <div class="mode-pick">
         <label for="mode">Guidance mode</label>
         <select id="mode" name="mode">
           <option value="general" selected>General guidance</option>
@@ -61,6 +78,17 @@
     </form>
 
     <p id="cue" class="cue" role="status" aria-live="polite" aria-atomic="true"></p>
+    <p id="cue-meta" class="cue-meta"></p>
+
+    <div class="actions">
+      <label class="choice" for="speak">
+        <input type="checkbox" id="speak">
+        Speak cues
+      </label>
+      <button type="button" id="mark-false" class="secondary">False alert</button>
+      <button type="button" id="mark-missed" class="secondary">Missed it</button>
+      <span id="mark-status" class="mark-status" role="status" aria-live="polite"></span>
+    </div>
 
     <section class="stage" aria-label="Live camera view">
       <img id="video" alt="Live camera" aria-describedby="cue detail">
