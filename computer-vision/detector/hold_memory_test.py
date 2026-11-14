@@ -58,7 +58,6 @@ def test_clear_reasons_drop_remembered_sentence():
         "unsteady",
         "camera-missing",
         "model-missing",
-        "esp32",
     ):
         _, remembered = apply_hold_memory(PASS, None)
         cue = Cue(kind="quiet", speech="", reason=reason, side=None, class_name=None)
@@ -69,3 +68,13 @@ def test_clear_reasons_drop_remembered_sentence():
         held, _ = apply_hold_memory(HOLD, remembered)
         assert held.speech == ""
         assert held.reason == "holding"
+
+
+def test_depth_cue_is_remembered_with_its_fields():
+    drop = Cue("obstacle", "Drop ahead. Stop.", "drop", "center", None,
+               confidence=0.5, distance="near", source="depth", timestamp=5.0)
+    _, remembered = apply_hold_memory(drop, None)
+    published, _ = apply_hold_memory(HOLD, remembered)
+    assert published.speech == "Drop ahead. Stop."
+    assert published.reason == "holding"
+    assert published.source == "depth"

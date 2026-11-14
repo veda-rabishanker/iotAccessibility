@@ -2,34 +2,27 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from policy import Cue
 
+SPOKEN_REASONS = frozenset({"pass", "blocked", "approaching", "head", "drop", "path"})
 CLEAR_REASONS = frozenset(
-    {"clear", "pending", "unsteady", "camera-missing", "model-missing", "esp32"}
+    {"clear", "pending", "unsteady", "camera-missing", "model-missing"}
 )
 
 
 def apply_hold_memory(cue: Cue, remembered: Cue | None) -> tuple[Cue, Cue | None]:
     """Return the cue to publish and the obstacle sentence to keep.
 
-    Remember speech, class_name, and side from ``pass`` or ``blocked``. While
-    the latest reason is ``holding``, fill those fields from memory. Clear
-    memory on ``clear``, ``pending``, ``unsteady``, ``camera-missing``,
-    ``model-missing``, and ``esp32``.
+    A spoken cue is remembered. While the latest reason is ``holding``, the
+    published cue carries the remembered sentence and its fields. Quiet
+    reasons that mean "nothing to say" clear the memory.
     """
-    if cue.reason in ("pass", "blocked"):
+    if cue.reason in SPOKEN_REASONS:
         return cue, cue
     if cue.reason in CLEAR_REASONS:
         return cue, None
     if cue.reason == "holding" and remembered is not None:
-        return (
-            Cue(
-                kind=cue.kind,
-                speech=remembered.speech,
-                reason="holding",
-                side=remembered.side,
-                class_name=remembered.class_name,
-            ),
-            remembered,
-        )
+        return replace(remembered, kind=cue.kind, reason="holding"), remembered
     return cue, remembered

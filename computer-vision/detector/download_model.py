@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Download Ultralytics YOLO11n ONNX and verify the pinned SHA256."""
+"""Download the Depth Anything V2 Small ONNX files and verify pinned SHA256s.
+
+The two detector models (YOLO26n, YOLOE-26n with Strider's prompts) are not
+published as ONNX; build them with ``tools/export_models.py``.
+"""
 
 from __future__ import annotations
 
@@ -9,41 +13,35 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-EXPECTED_SHA256 = "634279b40c07c6391472c51ad45b81ebc48706a9a1fe72dd3396322acd0c053b"
-
 WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
-WEIGHT_PATH = WEIGHTS_DIR / "yolo11n.onnx"
-URL = "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.onnx"
-EXPECTED_OUTPUT_SHAPE = [1, 84, 8400]
+DEPTH_DIR = WEIGHTS_DIR / "depth"
+REPO = "https://huggingface.co/onnx-community/depth-anything-v2-small-ONNX/resolve"
+REVISION = "c3b67641fd837b2368757101311e5d21e511441e"
 USER_AGENT = "StriderVisionViewer/1.0"
+
+# Depth Anything V2 Small, Apache-2.0. ``model.onnx`` loads ``model.onnx_data`` from the same folder.
+FILES = {
+    "model.onnx": "345f249eda90f33e0548890f2fe1e89662c1dbb5a8b7c10a50492558f65e85a3",
+    "model.onnx_data": "c4fba31e921953367d8c5348b92296b2bf41f9cef9745ffaca01e2b1653e6d08",
+}
 
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
-        while True:
-            chunk = handle.read(1024 * 1024)
-            if not chunk:
-                break
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
 
 
 def _download(url: str, dest: Path) -> int:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(".onnx.part")
+    tmp = dest.with_name(dest.name + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            status = int(getattr(response, "status", 0) or response.getcode() or 0)
-            if status != 200:
-                return status
-            with tmp.open("wb") as out:
-                while True:
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    out.write(chunk)
+        with urllib.request.urlopen(request, timeout=120) as response, tmp.open("wb") as out:
+            for chunk in iter(lambda: response.read(1024 * 1024), b""):
+                out.write(chunk)
         tmp.replace(dest)
         return 200
     except urllib.error.HTTPError as exc:
@@ -52,66 +50,22 @@ def _download(url: str, dest: Path) -> int:
         return 0
 
 
-def _looks_like_onnx(path: Path) -> bool:
-    if not path.is_file() or path.stat().st_size < 1024:
-        return False
-    try:
-        import onnxruntime as ort
-
-        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-        return bool(session.get_inputs())
-    except Exception:
-        return False
-
-
-def _output_shape(path: Path) -> list[int]:
-    import numpy as np
-    import onnxruntime as ort
-
-    session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-    inp = session.get_inputs()[0]
-    dims = []
-    for dim in inp.shape:
-        if isinstance(dim, int) and dim > 0:
-            dims.append(dim)
-        else:
-            dims.append(1 if not dims else 640)
-    dummy = np.zeros(tuple(dims), dtype=np.float32)
-    outputs = session.run(None, {inp.name: dummy})
-    return [int(n) for n in outputs[0].shape]
-
-
 def main() -> int:
-    if not WEIGHT_PATH.is_file():
-        print(f"Downloading {URL}", flush=True)
-        status = _download(URL, WEIGHT_PATH)
-        if status != 200 or not _looks_like_onnx(WEIGHT_PATH):
-            print(f"Download failed (HTTP {status}) from {URL}", flush=True)
-            if WEIGHT_PATH.is_file():
-                WEIGHT_PATH.unlink()
-            print(f"Failed to download YOLO11n ONNX (HTTP {status}).", file=sys.stderr)
+    for name, expected in FILES.items():
+        dest = DEPTH_DIR / name
+        if not dest.is_file():
+            url = f"{REPO}/{REVISION}/onnx/{name}"
+            print(f"Downloading {url}", flush=True)
+            status = _download(url, dest)
+            if status != 200:
+                print(f"Download failed (HTTP {status}): {url}", file=sys.stderr)
+                return 1
+        digest = _sha256(dest)
+        if digest != expected:
+            print(f"SHA256 mismatch for {name}: got {digest}", file=sys.stderr)
+            dest.unlink()
             return 1
-
-    digest = _sha256(WEIGHT_PATH)
-    print(f"SHA256 {digest}", flush=True)
-    if not EXPECTED_SHA256:
-        print("EXPECTED_SHA256 is not pinned in this script yet.", file=sys.stderr)
-        return 1
-    if digest.lower() != EXPECTED_SHA256.lower():
-        print(
-            f"SHA256 mismatch: got {digest}, expected {EXPECTED_SHA256}.",
-            file=sys.stderr,
-        )
-        return 1
-
-    shape = _output_shape(WEIGHT_PATH)
-    print(f"ONNX output shape {shape}", flush=True)
-    if shape != EXPECTED_OUTPUT_SHAPE:
-        print(
-            f"ONNX output shape {shape} is not {EXPECTED_OUTPUT_SHAPE}.",
-            file=sys.stderr,
-        )
-        return 1
+        print(f"{name} ok", flush=True)
     return 0
 
 
