@@ -112,6 +112,13 @@ export default function CameraScreen() {
       </Card>
 
       <ActionButton
+        label="Live camera view"
+        accessibilityHint="Shows the collar camera video, for setup with a sighted helper."
+        onPress={() => router.push('/live-view' as never)}
+        tone="outline"
+        style={styles.footerButton}
+      />
+      <ActionButton
         label="Cue preferences"
         accessibilityHint="Opens cue preferences."
         onPress={() => router.push('/cue-preferences' as never)}

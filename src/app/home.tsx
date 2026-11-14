@@ -37,13 +37,22 @@ export default function HomeScreen() {
             Connected · battery{'\n'}82%
           </Body>
         </View>
-        <ActionButton
-          label="Manage"
-          accessibilityHint="Opens camera settings"
-          onPress={() => router.push('/camera' as never)}
-          tone="outline"
-          style={styles.manageButton}
-        />
+        <View style={styles.deviceActions}>
+          <ActionButton
+            label="Manage"
+            accessibilityHint="Opens camera settings"
+            onPress={() => router.push('/camera' as never)}
+            tone="outline"
+            style={styles.manageButton}
+          />
+          <ActionButton
+            label="Live view"
+            accessibilityHint="Shows the collar camera video, for setup with a sighted helper"
+            onPress={() => router.push('/live-view' as never)}
+            tone="outline"
+            style={styles.manageButton}
+          />
+        </View>
       </Card>
 
       <View accessibilityRole="radiogroup" accessibilityLabel="Guidance mode" style={styles.guidanceList}>
@@ -163,6 +172,7 @@ const styles = StyleSheet.create({
   deviceCopy: { flex: 1 },
   cardTitle: { color: colors.text, fontSize: type.cardTitle, fontWeight: '700' },
   deviceStatus: { fontSize: type.caption, lineHeight: 22, marginTop: 3 },
+  deviceActions: { gap: spacing.xs, flexShrink: 0 },
   manageButton: { minHeight: 56, flexShrink: 0, borderRadius: radii.md, paddingHorizontal: 20 },
   guidanceList: {},
   guidanceRow: { flexDirection: 'row', alignItems: 'stretch' },

@@ -29,11 +29,31 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 180
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "ios": {
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Strider connects to your collar camera on this Wi-Fi network.",
+        "NSBonjourServices": [
+          "_http._tcp",
+          "_strider._tcp"
+        ],
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     }
   }
 }
