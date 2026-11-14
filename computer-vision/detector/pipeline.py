@@ -88,23 +88,35 @@ class MjpegReader:
         return self._response is not None
 
     def read(self) -> tuple[bool, np.ndarray | None]:
+        """Return the newest complete frame received so far; older frames are dropped."""
         if self._response is None:
             return False, None
         try:
             while True:
-                start = self._buffer.find(b"\xff\xd8")
-                end = self._buffer.find(b"\xff\xd9", start + 2) if start >= 0 else -1
-                if start >= 0 and end >= 0:
-                    jpeg = self._buffer[start : end + 2]
-                    self._buffer = self._buffer[end + 2 :]
+                jpeg = self._take_newest()
+                if jpeg is not None:
                     frame = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
                     return frame is not None, frame
-                chunk = self._response.read(16384)
+                # read1 returns what has already arrived instead of waiting to fill the chunk.
+                chunk = self._response.read1(65536)
                 if not chunk:
                     return False, None
-                self._buffer = (self._buffer + chunk)[-2_000_000:]
+                self._buffer += chunk
         except Exception:
             return False, None
+
+    def _take_newest(self) -> bytes | None:
+        end = self._buffer.rfind(b"\xff\xd9")
+        if end < 0:
+            return None
+        start = self._buffer.rfind(b"\xff\xd8", 0, end)
+        if start < 0:
+            self._buffer = self._buffer[end + 2 :]
+            return None
+        jpeg = self._buffer[start : end + 2]
+        # Anything before is an older (stale) frame; anything after is the next partial one.
+        self._buffer = self._buffer[end + 2 :]
+        return jpeg
 
     def release(self) -> None:
         if self._response is not None:

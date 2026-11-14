@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 HOST = "127.0.0.1"
-DEFAULT_CAMERA = "http://192.168.4.1"
+DEFAULT_CAMERA = "http://192.168.4.1:81/stream"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DETECTOR_DIR = Path(__file__).resolve().parent.parent / "detector"
 CHUNK_SIZE = 8192

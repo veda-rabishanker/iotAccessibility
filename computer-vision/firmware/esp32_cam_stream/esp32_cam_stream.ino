@@ -1,23 +1,28 @@
 // Strider collar camera: Wi-Fi MJPEG only (AI-Thinker ESP32-CAM).
 // GPIO 4 is the flash LED and is tied to the camera data/SD lines.
 // Do not drive it; toggling it can crash the sensor.
+//
+// Port 80: GET /status (JSON), GET /control?size=QVGA&quality=15
+// Port 81: GET /stream (multipart MJPEG), on its own server so port 80 stays responsive.
 
+#include <ESPmDNS.h>
 #include <WiFi.h>
-#include "esp_camera.h"
+#include <esp_camera.h>
 #include <esp_http_server.h>
+#include <esp_wifi.h>
+#include <lwip/sockets.h>
 
 #if __has_include("config.h")
 #include "config.h"
 #endif
-
 #ifndef WIFI_SSID
 #define WIFI_SSID ""
 #endif
-
 #ifndef WIFI_PASSWORD
 #define WIFI_PASSWORD ""
 #endif
 
+// AI-Thinker ESP32-CAM pins.
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 0
@@ -35,28 +40,46 @@
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
+// Every Strider board announces itself as strider-<role>-<id>.local and as a
+// _strider._tcp mDNS service, so the app can find it without a fixed IP.
+static const char *DEVICE_ROLE = "cam";
 static const char *AP_SSID = "Strider-CAM";
 static const char *AP_PASSWORD = "strider-cam";
 static const unsigned long STA_TIMEOUT_MS = 20000;
+static const uint16_t STREAM_PORT = 81;
 
-#define PART_BOUNDARY "frame"
-static const char *STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
-static const char *STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
-static const char *STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+// Small frames stream fastest. QVGA is enough for the detector (it upsamples) and depth.
+static const framesize_t DEFAULT_SIZE = FRAMESIZE_QVGA;
+static const int DEFAULT_QUALITY = 15;  // 4..63, lower = sharper and bigger
+
+struct SizeOption {
+  const char *name;
+  framesize_t size;
+};
+static const SizeOption SIZE_OPTIONS[] = {
+    {"QQVGA", FRAMESIZE_QQVGA},  // 160x120
+    {"QVGA", FRAMESIZE_QVGA},    // 320x240
+    {"HVGA", FRAMESIZE_HVGA},    // 480x320
+    {"VGA", FRAMESIZE_VGA},      // 640x480
+};
 
 static char g_ip[16] = "0.0.0.0";
+static char g_id[5] = "0000";
+static char g_hostname[32] = "strider-cam";
 static const char *g_mode = "ap";
-static const char *g_framesize = "VGA";
-static httpd_handle_t g_httpd = NULL;
+static const char *g_framesize = "QVGA";
+static framesize_t g_max_size = FRAMESIZE_VGA;  // Largest size the frame buffers can hold.
+static int g_quality = DEFAULT_QUALITY;
 
-static void format_ip(const IPAddress &ip, char *out, size_t len) {
-  snprintf(out, len, "%u.%u.%u.%u", (unsigned)ip[0], (unsigned)ip[1], (unsigned)ip[2], (unsigned)ip[3]);
+// ---- Wi-Fi ----------------------------------------------------------------
+
+static void format_ip(const IPAddress &ip) {
+  snprintf(g_ip, sizeof(g_ip), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
 }
 
 static bool start_softap(const char *reason) {
   Serial.println(reason);
   WiFi.disconnect(true);
-  WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_AP);
   WiFi.setSleep(false);
   IPAddress ap_ip(192, 168, 4, 1);
@@ -65,49 +88,54 @@ static bool start_softap(const char *reason) {
     Serial.println("SoftAP start failed");
     return false;
   }
-  IPAddress ip = WiFi.softAPIP();
-  for (int i = 0; i < 20 && ip == IPAddress(0, 0, 0, 0); ++i) {
-    delay(100);
-    ip = WiFi.softAPIP();
-  }
-  format_ip(ip, g_ip, sizeof(g_ip));
+  format_ip(WiFi.softAPIP());
   g_mode = "ap";
-  Serial.print("Hotspot ");
-  Serial.print(AP_SSID);
-  Serial.print(" password ");
-  Serial.println(AP_PASSWORD);
+  Serial.printf("Hotspot %s password %s\n", AP_SSID, AP_PASSWORD);
   return true;
 }
 
 static bool start_wifi() {
   WiFi.persistent(false);
-  const char *ssid = WIFI_SSID;
-  if (ssid == nullptr || ssid[0] == '\0') {
-    return start_softap("WIFI_SSID missing or empty; starting Strider-CAM hotspot");
+  if (WIFI_SSID[0] == '\0') {
+    return start_softap("WIFI_SSID empty; starting Strider-CAM hotspot");
   }
-
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
+  Serial.printf("Connecting to %s\n", WIFI_SSID);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);                      // No modem sleep: it delays every packet.
+  esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);  // 20 MHz copes better with a busy 2.4 GHz band.
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
   WiFi.setAutoReconnect(true);
-  WiFi.begin(ssid, WIFI_PASSWORD);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   unsigned long started = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started < STA_TIMEOUT_MS) {
-    delay(500);
-    Serial.print(".");
+    delay(250);
   }
-  Serial.println();
-
   if (WiFi.status() != WL_CONNECTED) {
-    return start_softap("Station join failed; falling back to Strider-CAM hotspot");
+    return start_softap("Join failed; falling back to Strider-CAM hotspot");
   }
-
-  format_ip(WiFi.localIP(), g_ip, sizeof(g_ip));
+  format_ip(WiFi.localIP());
   g_mode = "sta";
+  Serial.printf("Signal: %d dBm, channel %d\n", WiFi.RSSI(), WiFi.channel());
   return true;
 }
+
+static void start_mdns() {
+  // Last two bytes of the factory MAC: stable per board, unique enough per network.
+  uint64_t mac = ESP.getEfuseMac();
+  snprintf(g_id, sizeof(g_id), "%02x%02x", (unsigned)((mac >> 32) & 0xff), (unsigned)((mac >> 40) & 0xff));
+  snprintf(g_hostname, sizeof(g_hostname), "strider-%s-%s", DEVICE_ROLE, g_id);
+  if (!MDNS.begin(g_hostname)) {
+    Serial.println("mDNS failed; use the IP address");
+    return;
+  }
+  MDNS.addService("strider", "tcp", 80);
+  MDNS.addServiceTxt("strider", "tcp", "role", DEVICE_ROLE);
+  MDNS.addServiceTxt("strider", "tcp", "id", (const char *)g_id);
+}
+
+// ---- Camera ---------------------------------------------------------------
 
 static bool start_camera() {
   camera_config_t config = {};
@@ -131,17 +159,18 @@ static bool start_camera() {
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
+  // Buffers are sized for the frame size given here, so allocate for VGA and then drop
+  // to the default size; /control can go back up to VGA without overflowing them.
   config.frame_size = FRAMESIZE_VGA;
-  config.jpeg_quality = 12;
+  config.jpeg_quality = DEFAULT_QUALITY;
   config.fb_count = 2;
   config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.grab_mode = CAMERA_GRAB_LATEST;
+  config.grab_mode = CAMERA_GRAB_LATEST;  // Always hand out the newest frame; drop stale ones.
 
   if (!psramFound()) {
-    // Two VGA buffers do not fit in DRAM, and grab-latest needs a spare buffer.
-    Serial.println("PSRAM not found; using one SVGA buffer in DRAM");
-    g_framesize = "SVGA";
-    config.frame_size = FRAMESIZE_SVGA;
+    Serial.println("No PSRAM: one QVGA buffer in DRAM");
+    g_max_size = FRAMESIZE_QVGA;
+    config.frame_size = FRAMESIZE_QVGA;
     config.fb_count = 1;
     config.fb_location = CAMERA_FB_IN_DRAM;
     config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
@@ -152,76 +181,86 @@ static bool start_camera() {
     Serial.printf("Camera init failed: 0x%x\n", err);
     return false;
   }
+  sensor_t *sensor = esp_camera_sensor_get();
+  sensor->set_framesize(sensor, DEFAULT_SIZE);
   return true;
 }
 
-static esp_err_t index_handler(httpd_req_t *req) {
-  char page[384];
-  int n = snprintf(
-      page,
-      sizeof(page),
-      "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-      "<title>Strider CAM</title></head><body><p>Strider CAM %s</p><img src=\"/stream\"></body></html>",
-      g_ip);
-  if (n < 0 || (size_t)n >= sizeof(page)) {
-    return httpd_resp_send_500(req);
+// ---- HTTP -----------------------------------------------------------------
+
+static bool send_all(int fd, const void *data, size_t len) {
+  const uint8_t *p = static_cast<const uint8_t *>(data);
+  while (len > 0) {
+    int sent = send(fd, p, len, 0);
+    if (sent <= 0) {
+      return false;
+    }
+    p += sent;
+    len -= sent;
   }
-  httpd_resp_set_type(req, "text/html");
-  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-  return httpd_resp_send(req, page, n);
+  return true;
 }
 
+// Writes straight to the socket: one small part header, then the whole JPEG in one call.
+// The http server's chunked writes split every frame into ~6 tiny packets, which stalls
+// on delayed ACKs. TCP_NODELAY sends each write at once.
 static esp_err_t stream_handler(httpd_req_t *req) {
-  esp_err_t res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
-  if (res != ESP_OK) {
-    return res;
-  }
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+  int fd = httpd_req_to_sockfd(req);
+  int one = 1;
+  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
-  char part_buf[80];
+  static const char HEADER[] =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Type: multipart/x-mixed-replace;boundary=frame\r\n"
+      "Access-Control-Allow-Origin: *\r\n"
+      "Cache-Control: no-cache\r\n"
+      "Connection: close\r\n\r\n";
+  if (!send_all(fd, HEADER, sizeof(HEADER) - 1)) {
+    return ESP_FAIL;
+  }
+
+  char part[96];
+  unsigned long window_start = millis();
+  unsigned frames = 0;
+  size_t bytes = 0;
   while (true) {
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
       Serial.println("Camera capture failed");
-      res = ESP_FAIL;
       break;
     }
-    if (fb->format != PIXFORMAT_JPEG) {
-      esp_camera_fb_return(fb);
-      res = ESP_FAIL;
-      break;
-    }
-
-    int hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, (unsigned)fb->len);
-    if (hlen > 0 && (size_t)hlen < sizeof(part_buf)) {
-      res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-      if (res == ESP_OK) {
-        res = httpd_resp_send_chunk(req, part_buf, hlen);
-      }
-      if (res == ESP_OK) {
-        res = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
-      }
-    } else {
-      res = ESP_FAIL;
-    }
+    int n = snprintf(part, sizeof(part),
+                     "\r\n--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+                     (unsigned)fb->len);
+    bool ok = send_all(fd, part, n) && send_all(fd, fb->buf, fb->len);
+    frames++;
+    bytes += fb->len;
     esp_camera_fb_return(fb);
-    if (res != ESP_OK) {
-      break;
+    if (!ok) {
+      break;  // Viewer went away.
+    }
+    unsigned long elapsed = millis() - window_start;
+    if (elapsed >= 5000) {
+      Serial.printf("Stream: %.1f fps, %u KB/s, %s q%d\n", frames * 1000.0f / elapsed,
+                    (unsigned)(bytes / elapsed), g_framesize, g_quality);
+      window_start = millis();
+      frames = 0;
+      bytes = 0;
     }
   }
-  return res;
+  return ESP_FAIL;  // We wrote the response ourselves; tell the server to close the socket.
 }
 
 static esp_err_t status_handler(httpd_req_t *req) {
-  char body[96];
-  int n = snprintf(
-      body,
-      sizeof(body),
-      "{\"ok\":true,\"ip\":\"%s\",\"mode\":\"%s\",\"framesize\":\"%s\"}",
-      g_ip,
-      g_mode,
-      g_framesize);
+  // Signal strength in dBm (closer to 0 is stronger); 0 when the camera is the hotspot.
+  int rssi = (g_mode[0] == 's' && WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
+  char body[256];
+  int n = snprintf(body, sizeof(body),
+                   "{\"ok\":true,\"device\":\"strider\",\"role\":\"%s\",\"id\":\"%s\",\"name\":\"%s.local\","
+                   "\"ip\":\"%s\",\"mode\":\"%s\",\"framesize\":\"%s\",\"quality\":%d,"
+                   "\"stream_port\":%u,\"rssi\":%d}",
+                   DEVICE_ROLE, g_id, g_hostname, g_ip, g_mode, g_framesize, g_quality,
+                   (unsigned)STREAM_PORT, rssi);
   if (n < 0 || (size_t)n >= sizeof(body)) {
     return httpd_resp_send_500(req);
   }
@@ -231,118 +270,84 @@ static esp_err_t status_handler(httpd_req_t *req) {
   return httpd_resp_send(req, body, n);
 }
 
-static esp_err_t capture_handler(httpd_req_t *req) {
-  camera_fb_t *fb = esp_camera_fb_get();
-  if (!fb) {
-    Serial.println("Camera capture failed");
-    return httpd_resp_send_500(req);
+// GET /control?size=QVGA&quality=15 changes resolution / JPEG quality live (not saved).
+static esp_err_t control_handler(httpd_req_t *req) {
+  char query[64] = {0};
+  char value[16] = {0};
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
+    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Use /control?size=QVGA&quality=15");
   }
-  if (fb->format != PIXFORMAT_JPEG) {
-    esp_camera_fb_return(fb);
-    return httpd_resp_send_500(req);
+  if (httpd_query_key_value(query, "size", value, sizeof(value)) == ESP_OK) {
+    const SizeOption *match = nullptr;
+    for (const SizeOption &option : SIZE_OPTIONS) {
+      if (strcasecmp(value, option.name) == 0 && option.size <= g_max_size) {
+        match = &option;
+      }
+    }
+    if (match == nullptr || sensor->set_framesize(sensor, match->size) != 0) {
+      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "size must be QQVGA, QVGA, HVGA or VGA");
+    }
+    g_framesize = match->name;
   }
-  httpd_resp_set_type(req, "image/jpeg");
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-  esp_err_t res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
-  esp_camera_fb_return(fb);
-  return res;
+  if (httpd_query_key_value(query, "quality", value, sizeof(value)) == ESP_OK) {
+    int quality = atoi(value);
+    if (quality < 4 || quality > 63) {
+      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "quality must be 4..63");
+    }
+    sensor->set_quality(sensor, quality);
+    g_quality = quality;
+  }
+  Serial.printf("Control: %s q%d\n", g_framesize, g_quality);
+  return status_handler(req);
+}
+
+static void add_route(httpd_handle_t server, const char *path, esp_err_t (*handler)(httpd_req_t *)) {
+  httpd_uri_t uri = {};
+  uri.uri = path;
+  uri.method = HTTP_GET;
+  uri.handler = handler;
+  httpd_register_uri_handler(server, &uri);
 }
 
 static bool start_http() {
+  httpd_handle_t api = NULL;
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80;
-  config.stack_size = 8192;
-  config.max_uri_handlers = 8;
-  config.recv_wait_timeout = 10;
-  config.send_wait_timeout = 10;
   config.lru_purge_enable = true;
-
-  if (httpd_start(&g_httpd, &config) != ESP_OK) {
-    Serial.println("HTTP server failed to start");
+  if (httpd_start(&api, &config) != ESP_OK) {
     return false;
   }
+  add_route(api, "/status", status_handler);
+  add_route(api, "/control", control_handler);
 
-  httpd_uri_t index_uri = {
-      .uri = "/",
-      .method = HTTP_GET,
-      .handler = index_handler,
-      .user_ctx = NULL
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-      ,
-      .is_websocket = false,
-      .handle_ws_control_frames = false,
-      .supported_subprotocol = NULL
-#endif
-  };
-  httpd_uri_t stream_uri = {
-      .uri = "/stream",
-      .method = HTTP_GET,
-      .handler = stream_handler,
-      .user_ctx = NULL
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-      ,
-      .is_websocket = false,
-      .handle_ws_control_frames = false,
-      .supported_subprotocol = NULL
-#endif
-  };
-  httpd_uri_t status_uri = {
-      .uri = "/status",
-      .method = HTTP_GET,
-      .handler = status_handler,
-      .user_ctx = NULL
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-      ,
-      .is_websocket = false,
-      .handle_ws_control_frames = false,
-      .supported_subprotocol = NULL
-#endif
-  };
-  httpd_uri_t capture_uri = {
-      .uri = "/capture",
-      .method = HTTP_GET,
-      .handler = capture_handler,
-      .user_ctx = NULL
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-      ,
-      .is_websocket = false,
-      .handle_ws_control_frames = false,
-      .supported_subprotocol = NULL
-#endif
-  };
-
-  httpd_register_uri_handler(g_httpd, &index_uri);
-  httpd_register_uri_handler(g_httpd, &stream_uri);
-  httpd_register_uri_handler(g_httpd, &status_uri);
-  httpd_register_uri_handler(g_httpd, &capture_uri);
+  httpd_handle_t stream = NULL;
+  httpd_config_t stream_config = HTTPD_DEFAULT_CONFIG();
+  stream_config.server_port = STREAM_PORT;
+  stream_config.ctrl_port = config.ctrl_port + 1;  // Each server needs its own control port.
+  stream_config.max_open_sockets = 2;
+  stream_config.lru_purge_enable = true;
+  if (httpd_start(&stream, &stream_config) != ESP_OK) {
+    return false;
+  }
+  add_route(stream, "/stream", stream_handler);
   return true;
 }
 
 void setup() {
   Serial.begin(115200);
-  Serial.println();
-  Serial.println("Strider CAM");
-
-  if (!start_camera()) {
+  Serial.println("\nStrider CAM");
+  if (!start_camera() || !start_wifi()) {
     return;
   }
-  if (!start_wifi()) {
-    return;
-  }
-
-  Serial.print("Mode: ");
-  Serial.println(g_mode);
-  Serial.print("IP: ");
-  Serial.println(g_ip);
-
   if (!start_http()) {
+    Serial.println("HTTP server failed to start");
     return;
   }
-
-  Serial.print("Stream: http://");
-  Serial.print(g_ip);
-  Serial.println("/stream");
+  start_mdns();
+  Serial.printf("Mode: %s\nIP: %s\n", g_mode, g_ip);
+  Serial.printf("Stream: http://%s:%u/stream\n", g_ip, (unsigned)STREAM_PORT);
+  Serial.printf("Name:   http://%s.local:%u/stream\n", g_hostname, (unsigned)STREAM_PORT);
 }
 
 void loop() {
