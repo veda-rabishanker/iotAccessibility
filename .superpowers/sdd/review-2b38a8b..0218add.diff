@@ -1,0 +1,1431 @@
+﻿# Review package: 2b38a8b..0218add
+
+## Commits
+0218add Pin YOLO11n ONNX because YOLOv8n ONNX is not published.
+d8a01b0 Wire the local viewer to the laptop webcam and one walking cue.
+
+## Files changed
+ computer-vision/.gitignore                 |   1 +
+ computer-vision/README.md                  |  40 +++-
+ computer-vision/detector/download_model.py | 119 ++++++++++++
+ computer-vision/detector/pipeline.py       | 290 +++++++++++++++++++++++++++++
+ computer-vision/detector/webcam.py         |  13 ++
+ computer-vision/requirements.txt           |   3 +
+ computer-vision/viewer/README.md           |  29 ++-
+ computer-vision/viewer/server.py           | 133 ++++++++++++-
+ computer-vision/viewer/static/app.js       | 204 ++++++++++++++++----
+ computer-vision/viewer/static/index.html   |  30 ++-
+ computer-vision/viewer/static/styles.css   |  74 +++++++-
+ 11 files changed, 878 insertions(+), 58 deletions(-)
+
+## Diff
+diff --git a/computer-vision/.gitignore b/computer-vision/.gitignore
+index 7a60b85..96f4a1e 100644
+--- a/computer-vision/.gitignore
++++ b/computer-vision/.gitignore
+@@ -1,2 +1,3 @@
+ __pycache__/
+ *.pyc
++detector/weights/
+diff --git a/computer-vision/README.md b/computer-vision/README.md
+index 6c55637..ca7d1fd 100644
+--- a/computer-vision/README.md
++++ b/computer-vision/README.md
+@@ -1,24 +1,48 @@
+ # Computer vision
+ 
+-Separate from the Strider Expo app. This folder is the collar camera: an AI-Thinker ESP32-CAM streams MJPEG over Wi-Fi, and a local page on the computer shows that stream.
++Separate from the Strider Expo app. This folder is the collar camera pipeline on the bench: an AI-Thinker ESP32-CAM can stream MJPEG over Wi-Fi, and a local page on the computer can show that stream or the laptop webcam.
+ 
+-Nothing here is wired into `src/` yet. Detection comes later. This pass is the live picture only.
++The webcam is a bench stand-in for the collar camera. It is the right way to watch the detector. It is the wrong way to claim the collar works on a street. The page shows one walking cue. It does not report distances, say a crosswalk is safe, or invent curb depth.
+ 
+ ## Layout
+ 
+ - [`firmware/`](firmware/README.md) — Arduino sketch. First flash starts a hotspot named `Strider-CAM` (password `strider-cam`) and serves `http://192.168.4.1/stream`.
+-- [`viewer/`](viewer/README.md) — Python page that proxies that stream into the browser. No extra packages.
++- [`viewer/`](viewer/README.md) — Python page that shows the laptop webcam cue or proxies the ESP32 stream into the browser.
++- [`detector/`](detector/) — walking-cue policy, picture gate, YOLO parse, and the webcam loop. Weights live in `detector/weights/` and are gitignored.
+ 
+-## Watch the camera
++## Install
+ 
+-1. Flash `firmware/esp32_cam_stream` (see the firmware README). GPIO0 must be grounded only while uploading.
+-2. Join the `Strider-CAM` Wi-Fi from this computer, or put your home Wi-Fi into `config.h` and flash again.
+-3. From the repository root:
++From the repository root:
++
++```bash
++python -m pip install -r computer-vision/requirements.txt
++python computer-vision/detector/download_model.py
++```
++
++`download_model.py` fetches Ultralytics YOLO11n ONNX into `computer-vision/detector/weights/yolo11n.onnx` and checks a pinned SHA256. Ultralytics does not publish a YOLOv8n ONNX release asset; YOLO11n with a 640 input produces the same `[1, 84, 8400]` COCO layout the detector parser expects. That folder is gitignored. Do not commit the `.onnx` file.
++
++## Watch the webcam cue
++
++From the repository root:
+ 
+ ```bash
+ python computer-vision/viewer/server.py
+ ```
+ 
+-4. Open http://127.0.0.1:8080. The video stage loads `http://192.168.4.1/stream` through the local proxy.
++Open http://127.0.0.1:8080. Webcam is selected on load. The page draws detector boxes and one cue line.
++
++## Modes
++
++The control uses the same three names as the app. The detector policy does not change with the mode.
++
++- **General guidance** — one walking cue from the policy, or a quiet line when the picture is clear, unsteady, or the camera or weights are missing.
++- **Crosswalk assistance** — always `Crosswalk lining-up is not estimated from this camera.` Obstacle speech may still appear under that sentence. The page does not say a crossing is safe and does not draw a crossing direction.
++- **Depth perception** — always `Steps, curbs, and drop-offs are not estimated from this camera.` Obstacle speech may still appear under that sentence. The page does not show a number of feet or meters.
++
++## Watch the ESP32 camera
++
++1. Flash `firmware/esp32_cam_stream` (see the firmware README). GPIO0 must be grounded only while uploading.
++2. Join the `Strider-CAM` Wi-Fi from this computer, or put your home Wi-Fi into `config.h` and flash again.
++3. Start the viewer as above and choose ESP32. The video stage loads `http://192.168.4.1/stream` through the local proxy.
+ 
+ If the board is already running Espressif's CameraWebServer, skip the flash and type its stream address in the page, usually `http://<camera-ip>:81/stream`.
+diff --git a/computer-vision/detector/download_model.py b/computer-vision/detector/download_model.py
+new file mode 100644
+index 0000000..b234d05
+--- /dev/null
++++ b/computer-vision/detector/download_model.py
+@@ -0,0 +1,119 @@
++#!/usr/bin/env python3
++"""Download Ultralytics YOLO11n ONNX and verify the pinned SHA256."""
++
++from __future__ import annotations
++
++import hashlib
++import sys
++import urllib.error
++import urllib.request
++from pathlib import Path
++
++EXPECTED_SHA256 = "634279b40c07c6391472c51ad45b81ebc48706a9a1fe72dd3396322acd0c053b"
++
++WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
++WEIGHT_PATH = WEIGHTS_DIR / "yolo11n.onnx"
++URL = "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.onnx"
++EXPECTED_OUTPUT_SHAPE = [1, 84, 8400]
++USER_AGENT = "StriderVisionViewer/1.0"
++
++
++def _sha256(path: Path) -> str:
++    digest = hashlib.sha256()
++    with path.open("rb") as handle:
++        while True:
++            chunk = handle.read(1024 * 1024)
++            if not chunk:
++                break
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def _download(url: str, dest: Path) -> int:
++    dest.parent.mkdir(parents=True, exist_ok=True)
++    tmp = dest.with_suffix(".onnx.part")
++    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
++    try:
++        with urllib.request.urlopen(request, timeout=120) as response:
++            status = int(getattr(response, "status", 0) or response.getcode() or 0)
++            if status != 200:
++                return status
++            with tmp.open("wb") as out:
++                while True:
++                    chunk = response.read(1024 * 1024)
++                    if not chunk:
++                        break
++                    out.write(chunk)
++        tmp.replace(dest)
++        return 200
++    except urllib.error.HTTPError as exc:
++        return int(exc.code)
++    except (OSError, urllib.error.URLError):
++        return 0
++
++
++def _looks_like_onnx(path: Path) -> bool:
++    if not path.is_file() or path.stat().st_size < 1024:
++        return False
++    try:
++        import onnxruntime as ort
++
++        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
++        return bool(session.get_inputs())
++    except Exception:
++        return False
++
++
++def _output_shape(path: Path) -> list[int]:
++    import numpy as np
++    import onnxruntime as ort
++
++    session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
++    inp = session.get_inputs()[0]
++    dims = []
++    for dim in inp.shape:
++        if isinstance(dim, int) and dim > 0:
++            dims.append(dim)
++        else:
++            dims.append(1 if not dims else 640)
++    dummy = np.zeros(tuple(dims), dtype=np.float32)
++    outputs = session.run(None, {inp.name: dummy})
++    return [int(n) for n in outputs[0].shape]
++
++
++def main() -> int:
++    if not WEIGHT_PATH.is_file():
++        print(f"Downloading {URL}", flush=True)
++        status = _download(URL, WEIGHT_PATH)
++        if status != 200 or not _looks_like_onnx(WEIGHT_PATH):
++            print(f"Download failed (HTTP {status}) from {URL}", flush=True)
++            if WEIGHT_PATH.is_file():
++                WEIGHT_PATH.unlink()
++            print(f"Failed to download YOLO11n ONNX (HTTP {status}).", file=sys.stderr)
++            return 1
++
++    digest = _sha256(WEIGHT_PATH)
++    print(f"SHA256 {digest}", flush=True)
++    if not EXPECTED_SHA256:
++        print("EXPECTED_SHA256 is not pinned in this script yet.", file=sys.stderr)
++        return 1
++    if digest.lower() != EXPECTED_SHA256.lower():
++        print(
++            f"SHA256 mismatch: got {digest}, expected {EXPECTED_SHA256}.",
++            file=sys.stderr,
++        )
++        return 1
++
++    shape = _output_shape(WEIGHT_PATH)
++    print(f"ONNX output shape {shape}", flush=True)
++    if shape != EXPECTED_OUTPUT_SHAPE:
++        print(
++            f"ONNX output shape {shape} is not {EXPECTED_OUTPUT_SHAPE}.",
++            file=sys.stderr,
++        )
++        return 1
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/computer-vision/detector/pipeline.py b/computer-vision/detector/pipeline.py
+new file mode 100644
+index 0000000..74d9bd6
+--- /dev/null
++++ b/computer-vision/detector/pipeline.py
+@@ -0,0 +1,290 @@
++"""Webcam capture and walking-cue inference loop."""
++
++from __future__ import annotations
++
++import sys
++import threading
++import time
++from pathlib import Path
++
++import cv2
++import numpy as np
++
++_DETECTOR_DIR = Path(__file__).resolve().parent
++if str(_DETECTOR_DIR) not in sys.path:
++    sys.path.insert(0, str(_DETECTOR_DIR))
++
++from policy import Box, Cue, PolicyState, decide
++from quality import frame_is_usable
++from webcam import open_webcam
++from yolo import letterbox, predictions_to_boxes
++
++WEIGHT_PATH = _DETECTOR_DIR / "weights" / "yolo11n.onnx"
++INFER_PERIOD = 0.125
++MODES = ("general", "crosswalk", "depth")
++QUIET = Cue(kind="quiet", speech="", reason="camera-missing", side=None, class_name=None)
++
++
++def _quiet(reason: str) -> Cue:
++    return Cue(kind="quiet", speech="", reason=reason, side=None, class_name=None)
++
++
++class Pipeline:
++    """Newest-frame capture plus an 8 Hz detector. Never raises on missing camera or weights."""
++
++    def __init__(self) -> None:
++        self._lock = threading.Lock()
++        self._frame: np.ndarray | None = None
++        self._jpeg: bytes | None = None
++        self._cue = QUIET
++        self._inference_ms = 0
++        self._mode = "general"
++        self._source = "webcam"
++        self._index = 0
++        self._camera_opened = False
++        self._capture: cv2.VideoCapture | None = None
++        self._capture_thread: threading.Thread | None = None
++        self._capture_stop = threading.Event()
++        self._capture_gen = 0
++        self._infer_thread: threading.Thread | None = None
++        self._infer_stop = threading.Event()
++        self._policy_state = PolicyState()
++        self._session = None
++        self._input_name: str | None = None
++        self._started = False
++
++    def start(self) -> None:
++        """Start webcam index 0 and the inference loop. Safe with no camera and no weights."""
++        try:
++            if self._infer_thread is None or not self._infer_thread.is_alive():
++                self._infer_stop.clear()
++                self._infer_thread = threading.Thread(
++                    target=self._inference_loop, name="detector-infer", daemon=True
++                )
++                self._infer_thread.start()
++            self.set_source_webcam(0)
++            self._started = True
++        except Exception:
++            self._started = True
++
++    def set_mode(self, mode: str) -> None:
++        if mode not in MODES:
++            return
++        with self._lock:
++            self._mode = mode
++
++    def set_source_webcam(self, index: int) -> None:
++        self._index = int(index)
++        with self._lock:
++            self._source = "webcam"
++        self._restart_capture()
++
++    def set_source_esp32(self) -> None:
++        self._stop_capture()
++        with self._lock:
++            self._source = "esp32"
++            self._frame = None
++            self._jpeg = None
++            self._camera_opened = False
++            self._cue = _quiet("camera-missing")
++            self._inference_ms = 0
++
++    def snapshot(self) -> dict:
++        with self._lock:
++            cue = self._cue
++            return {
++                "kind": cue.kind,
++                "speech": cue.speech,
++                "reason": cue.reason,
++                "side": cue.side,
++                "class_name": cue.class_name,
++                "inference_ms": self._inference_ms,
++                "mode": self._mode,
++                "jpeg": self._jpeg,
++                "source": self._source,
++            }
++
++    def _restart_capture(self) -> None:
++        self._stop_capture()
++        self._capture_stop.clear()
++        with self._lock:
++            self._frame = None
++            self._camera_opened = False
++            self._capture_gen += 1
++            gen = self._capture_gen
++        self._capture_thread = threading.Thread(
++            target=self._capture_loop, args=(gen,), name="detector-capture", daemon=True
++        )
++        self._capture_thread.start()
++
++    def _stop_capture(self) -> None:
++        self._capture_stop.set()
++        thread = self._capture_thread
++        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
++            thread.join(timeout=2.0)
++        capture = None
++        with self._lock:
++            capture = self._capture
++            self._capture = None
++            self._capture_thread = None
++            self._frame = None
++            self._camera_opened = False
++        if capture is not None:
++            try:
++                capture.release()
++            except Exception:
++                pass
++
++    def _capture_loop(self, gen: int) -> None:
++        try:
++            capture = open_webcam(self._index)
++        except Exception:
++            capture = None
++        opened = bool(capture is not None and capture.isOpened())
++        with self._lock:
++            if gen != self._capture_gen:
++                stale = True
++            else:
++                stale = False
++                self._capture = capture
++                self._camera_opened = opened
++                if not opened:
++                    self._frame = None
++        if stale:
++            if capture is not None:
++                try:
++                    capture.release()
++                except Exception:
++                    pass
++            return
++        if not opened:
++            while not self._capture_stop.is_set():
++                self._capture_stop.wait(0.1)
++            if capture is not None:
++                try:
++                    capture.release()
++                except Exception:
++                    pass
++            return
++        while not self._capture_stop.is_set():
++            ok, frame = capture.read()
++            if ok and frame is not None:
++                with self._lock:
++                    self._frame = frame
++            else:
++                self._capture_stop.wait(0.01)
++
++    def _inference_loop(self) -> None:
++        while not self._infer_stop.is_set():
++            started = time.monotonic()
++            try:
++                self._infer_once()
++            except Exception:
++                with self._lock:
++                    self._cue = _quiet("camera-missing")
++                    self._inference_ms = 0
++            remaining = INFER_PERIOD - (time.monotonic() - started)
++            if remaining > 0:
++                self._infer_stop.wait(remaining)
++
++    def _infer_once(self) -> None:
++        with self._lock:
++            frame = None if self._frame is None else self._frame.copy()
++            opened = self._camera_opened
++            source = self._source
++        if source != "webcam" or frame is None or not opened:
++            self._publish(_quiet("camera-missing"), 0, None if source != "webcam" else frame, [])
++            return
++
++        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
++        if not frame_is_usable(gray):
++            self._publish(_quiet("unsteady"), 0, frame, [])
++            return
++
++        if not WEIGHT_PATH.is_file():
++            self._publish(_quiet("model-missing"), 0, frame, [])
++            return
++
++        session = self._load_session()
++        if session is None or self._input_name is None:
++            self._publish(_quiet("model-missing"), 0, frame, [])
++            return
++
++        infer_started = time.monotonic()
++        boxed = letterbox(frame)
++        rgb = cv2.cvtColor(boxed.image, cv2.COLOR_BGR2RGB)
++        tensor = rgb.astype(np.float32) / 255.0
++        nchw = np.transpose(tensor, (2, 0, 1))[None, ...]
++        outputs = session.run(None, {self._input_name: nchw})
++        boxes = predictions_to_boxes(outputs[0], boxed)
++        inference_ms = int(round((time.monotonic() - infer_started) * 1000))
++        cue, self._policy_state = decide(
++            boxes,
++            int(frame.shape[1]),
++            int(frame.shape[0]),
++            time.monotonic(),
++            self._policy_state,
++        )
++        self._publish(cue, inference_ms, frame, boxes)
++
++    def _load_session(self):
++        if self._session is not None:
++            return self._session
++        try:
++            import onnxruntime as ort
++
++            session = ort.InferenceSession(
++                str(WEIGHT_PATH), providers=["CPUExecutionProvider"]
++            )
++            self._session = session
++            self._input_name = session.get_inputs()[0].name
++            return session
++        except Exception:
++            self._session = None
++            self._input_name = None
++            return None
++
++    def _publish(
++        self,
++        cue: Cue,
++        inference_ms: int,
++        frame: np.ndarray | None,
++        boxes: list[Box],
++    ) -> None:
++        jpeg = None
++        if frame is not None:
++            annotated = _draw_boxes(frame, boxes)
++            ok, encoded = cv2.imencode(".jpg", annotated)
++            if ok:
++                jpeg = encoded.tobytes()
++        with self._lock:
++            self._cue = cue
++            self._inference_ms = inference_ms
++            if jpeg is not None:
++                self._jpeg = jpeg
++
++
++def _draw_boxes(frame: np.ndarray, boxes: list[Box]) -> np.ndarray:
++    out = frame.copy()
++    for box in boxes:
++        x0 = int(round(box.x0))
++        y0 = int(round(box.y0))
++        x1 = int(round(box.x1))
++        y1 = int(round(box.y1))
++        cv2.rectangle(out, (x0, y0), (x1, y1), (215, 235, 180), 2)
++        label = box.class_name
++        baseline = max(y0 - 8, 16)
++        cv2.putText(
++            out,
++            label,
++            (x0, baseline),
++            cv2.FONT_HERSHEY_SIMPLEX,
++            0.6,
++            (215, 235, 180),
++            2,
++            cv2.LINE_AA,
++        )
++    return out
++
++
++PIPELINE = Pipeline()
+diff --git a/computer-vision/detector/webcam.py b/computer-vision/detector/webcam.py
+new file mode 100644
+index 0000000..d0cf379
+--- /dev/null
++++ b/computer-vision/detector/webcam.py
+@@ -0,0 +1,13 @@
++import sys
++
++import cv2
++
++
++def open_webcam(index: int = 0) -> cv2.VideoCapture:
++    """Open a camera index. On Windows try DirectShow first, then the default."""
++    if sys.platform == "win32":
++        capture = cv2.VideoCapture(index, cv2.CAP_DSHOW)
++        if capture.isOpened():
++            return capture
++        capture.release()
++    return cv2.VideoCapture(index)
+diff --git a/computer-vision/requirements.txt b/computer-vision/requirements.txt
+new file mode 100644
+index 0000000..9b3a3b4
+--- /dev/null
++++ b/computer-vision/requirements.txt
+@@ -0,0 +1,3 @@
++opencv-python
++onnxruntime
++pytest
+diff --git a/computer-vision/viewer/README.md b/computer-vision/viewer/README.md
+index 393a8cc..a874ae5 100644
+--- a/computer-vision/viewer/README.md
++++ b/computer-vision/viewer/README.md
+@@ -1,39 +1,56 @@
+ # Strider vision viewer
+ 
+-Local page for watching the collar ESP32-CAM while computer vision is coming up. A small Python server proxies the camera's MJPEG stream so the browser can show it on the same origin.
++Local page for watching the laptop webcam detector and the collar ESP32-CAM. The webcam is a bench stand-in for the collar camera. A small Python server serves an annotated webcam MJPEG stream and still proxies the camera's MJPEG stream so the browser can show either on the same origin.
+ 
+-There are no dependencies and no `package.json`. Python 3 and its standard library are enough.
++## Install
++
++From the repository root:
++
++```bash
++python -m pip install -r computer-vision/requirements.txt
++python computer-vision/detector/download_model.py
++```
++
++`download_model.py` writes `computer-vision/detector/weights/yolo11n.onnx` (Ultralytics YOLO11n ONNX; the YOLOv8n ONNX asset is not published). A 640 input yields `[1, 84, 8400]`, matching the parser tests. That directory is gitignored. The server still starts if the weight file is missing or no webcam opens.
+ 
+ ## Run
+ 
+ From the viewer folder:
+ 
+ ```bash
+ python server.py
+ ```
+ 
+ From the repository root:
+ 
+ ```bash
+ python computer-vision/viewer/server.py
+ ```
+ 
+ The server prints `Viewer at http://127.0.0.1:8080`. Open that address in a browser.
+ 
+-The viewer listens on `127.0.0.1` only. Stop it with Ctrl+C.
++The viewer listens on `127.0.0.1` only. Stop it with Ctrl+C. Webcam index 0 is the default source. General guidance is the default mode.
++
++## What the page does
++
++- **Video source** — Webcam or ESP32. Webcam is selected on load and loads `/webcam`. ESP32 posts the camera address and loads `/stream`.
++- **Guidance mode** — General guidance, Crosswalk assistance, and Depth perception. The mode label changes the page copy. It does not change the detector policy.
++- **Cue line** — one text line from `GET /api/cue`, about once a second.
++
++General guidance shows the policy speech, or `Nothing in your path.` when the way is clear. Crosswalk assistance always says lining-up is not estimated from this camera. Depth perception always says steps, curbs, and drop-offs are not estimated from this camera. The page does not report distances or say a crosswalk is safe.
+ 
+ ## Camera address
+ 
+-The first-run camera is `http://192.168.4.1/stream`. That is the Strider-CAM SoftAP: the camera is at `192.168.4.1` and the Wi-Fi name is `Strider-CAM`.
++The first-run ESP32 camera is `http://192.168.4.1/stream`. That is the Strider-CAM SoftAP: the camera is at `192.168.4.1` and the Wi-Fi name is `Strider-CAM`.
+ 
+-The computer has to be on the same network as the camera. For the default address, join the `Strider-CAM` Wi-Fi, then start the viewer.
++The computer has to be on the same network as the camera. For the default address, join the `Strider-CAM` Wi-Fi, then start the viewer and choose ESP32.
+ 
+ To point at another camera, type its address in the page and press Connect. A base URL and a full stream URL both work:
+ 
+ - `http://192.168.4.1` becomes `http://192.168.4.1/stream`
+ - `http://192.168.1.20:81/stream` is used as written (stock CameraWebServer often serves the stream on port 81)
+ 
+ You can also set the starting address before launch.
+ 
+ Windows PowerShell:
+ 
+@@ -72,11 +89,11 @@ macOS or Linux:
+ PORT=8090 python server.py
+ ```
+ 
+ ## What the camera serves
+ 
+ Strider firmware:
+ 
+ - `GET /stream` — multipart MJPEG (`multipart/x-mixed-replace`, boundary `frame`)
+ - `GET /status` — JSON `{ok, ip, mode, framesize}`
+ 
+-The page loads `/stream` on this viewer. The server reads the camera and forwards the bytes. The page checks `/api/health` every few seconds and shows **Connecting**, **Live**, or **Camera unreachable**.
++The page loads `/webcam` for the laptop camera and `/stream` for the ESP32. The server reads the ESP32 camera and forwards the bytes. The page checks `/api/health` every few seconds on the ESP32 path and shows **Connecting**, **Live**, or **Camera unreachable**.
+diff --git a/computer-vision/viewer/server.py b/computer-vision/viewer/server.py
+index d40ee6b..447e7fa 100644
+--- a/computer-vision/viewer/server.py
++++ b/computer-vision/viewer/server.py
+@@ -1,36 +1,44 @@
+ #!/usr/bin/env python3
+-"""Local web viewer that proxies an ESP32-CAM MJPEG stream.
++"""Local web viewer for the laptop webcam cue and the ESP32-CAM proxy.
+ 
+-Standard library only. Bind to 127.0.0.1 and forward the camera to the page
+-so the browser can show the stream without CORS.
++Bind to 127.0.0.1. The webcam path runs the detector. ESP32 bytes still go
++through the existing proxy so the browser can show that stream without CORS.
+ """
+ 
+ from __future__ import annotations
+ 
+ import json
+ import os
+ import sys
+ import threading
+ import time
+ import urllib.request
+ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+ from pathlib import Path
+ from urllib.parse import unquote, urlsplit, urlunsplit
+ 
+ HOST = "127.0.0.1"
+ DEFAULT_CAMERA = "http://192.168.4.1"
+ STATIC_DIR = Path(__file__).resolve().parent / "static"
++DETECTOR_DIR = Path(__file__).resolve().parent.parent / "detector"
+ CHUNK_SIZE = 8192
+ STREAM_TIMEOUT = 10
+ PROBE_TIMEOUT = 2
+ FRAME_FRESH_SECONDS = 8
++WEBCAM_BOUNDARY = "frame"
++MODES = ("general", "crosswalk", "depth")
++
++if str(DETECTOR_DIR) not in sys.path:
++    sys.path.insert(0, str(DETECTOR_DIR))
++
++from pipeline import PIPELINE  # noqa: E402
+ 
+ UNREACHABLE = (
+     "Camera unreachable. Join the Strider-CAM Wi-Fi, or enter the camera address."
+ )
+ 
+ CONTENT_TYPES = {
+     ".html": "text/html; charset=utf-8",
+     ".css": "text/css; charset=utf-8",
+     ".js": "text/javascript; charset=utf-8",
+ }
+@@ -295,44 +303,53 @@ class Handler(BaseHTTPRequestHandler):
+     protocol_version = "HTTP/1.0"
+     server_version = "StriderVisionViewer/1.0"
+ 
+     def do_GET(self) -> None:
+         path = urlsplit(self.path).path
+         try:
+             if path == "/":
+                 self._serve_path(STATIC_DIR / "index.html", CONTENT_TYPES[".html"])
+             elif path == "/stream":
+                 self._proxy_stream()
++            elif path == "/webcam":
++                self._webcam_stream()
+             elif path == "/api/health":
+                 self._send_json(200, health_report())
+             elif path == "/api/camera":
+                 stream_url, base_url = CAMERA.get()
+                 self._send_json(200, {"streamUrl": stream_url, "baseUrl": base_url})
++            elif path == "/api/cue":
++                self._send_cue()
+             elif path.startswith("/static/"):
+                 resolved = static_file(path)
+                 if resolved is None:
+                     self._send_text(404, "Not found\n")
+                 else:
+                     file_path, media = resolved
+                     self._serve_path(file_path, media)
+             else:
+                 self._send_text(404, "Not found\n")
+         except CLIENT_GONE:
+             return
+ 
+     def do_POST(self) -> None:
+         path = urlsplit(self.path).path
+         try:
+-            if path != "/api/camera":
++            if path == "/api/camera":
++                self._set_camera()
++            elif path == "/api/source":
++                self._set_source()
++            elif path == "/api/mode":
++                self._set_mode()
++            else:
+                 self._send_text(404, "Not found\n")
+                 return
+-            self._set_camera()
+         except CLIENT_GONE:
+             return
+ 
+     def _set_camera(self) -> None:
+         try:
+             length = int(self.headers.get("Content-Length", "0"))
+         except ValueError:
+             self._send_json(400, {"ok": False, "detail": "Expected a JSON body with a url."})
+             return
+         if length < 0 or length > 16384:
+@@ -347,20 +364,125 @@ class Handler(BaseHTTPRequestHandler):
+         if not isinstance(data, dict) or not isinstance(data.get("url"), str):
+             self._send_json(400, {"ok": False, "detail": "Expected a JSON body with a url."})
+             return
+         try:
+             stream_url, base_url = CAMERA.set_url(data["url"])
+         except CameraError as exc:
+             self._send_json(400, {"ok": False, "detail": str(exc)})
+             return
+         self._send_json(200, {"streamUrl": stream_url, "baseUrl": base_url})
+ 
++    def _read_json_object(self) -> dict | None:
++        try:
++            length = int(self.headers.get("Content-Length", "0"))
++        except ValueError:
++            return None
++        if length < 0 or length > 16384:
++            return None
++        raw = self.rfile.read(length) if length else b""
++        parsed = _json_dict(raw)
++        return parsed
++
++    def _set_source(self) -> None:
++        data = self._read_json_object()
++        if data is None:
++            self._send_json(400, {"ok": False, "detail": "Expected a JSON body."})
++            return
++        kind = data.get("kind")
++        if kind == "webcam":
++            index = data.get("index", 0)
++            if not isinstance(index, int) or isinstance(index, bool):
++                self._send_json(400, {"ok": False, "detail": "Expected kind webcam with an integer index."})
++                return
++            PIPELINE.set_source_webcam(index)
++            self._send_json(200, {"ok": True, "kind": "webcam", "index": index})
++            return
++        if kind == "esp32":
++            url = data.get("url")
++            if not isinstance(url, str):
++                self._send_json(400, {"ok": False, "detail": "Expected kind esp32 with a url."})
++                return
++            try:
++                stream_url, base_url = CAMERA.set_url(url)
++            except CameraError as exc:
++                self._send_json(400, {"ok": False, "detail": str(exc)})
++                return
++            PIPELINE.set_source_esp32()
++            self._send_json(
++                200, {"ok": True, "kind": "esp32", "streamUrl": stream_url, "baseUrl": base_url}
++            )
++            return
++        self._send_json(400, {"ok": False, "detail": "kind must be webcam or esp32."})
++
++    def _set_mode(self) -> None:
++        data = self._read_json_object()
++        if data is None:
++            self._send_json(400, {"ok": False, "detail": "Expected a JSON body with a mode."})
++            return
++        mode = data.get("mode")
++        if mode not in MODES:
++            self._send_json(400, {"ok": False, "detail": "mode must be general, crosswalk, or depth."})
++            return
++        PIPELINE.set_mode(mode)
++        self._send_json(200, {"ok": True, "mode": mode})
++
++    def _send_cue(self) -> None:
++        snap = PIPELINE.snapshot()
++        self._send_json(
++            200,
++            {
++                "kind": snap["kind"],
++                "speech": snap["speech"],
++                "reason": snap["reason"],
++                "side": snap["side"],
++                "class_name": snap["class_name"],
++                "inference_ms": snap["inference_ms"],
++                "mode": snap["mode"],
++            },
++        )
++
++    def _webcam_stream(self) -> None:
++        snap = PIPELINE.snapshot()
++        jpeg = snap.get("jpeg")
++        if not jpeg:
++            self._send_text(503, "No webcam frame yet.\n")
++            return
++        self.send_response(200)
++        self.send_header(
++            "Content-Type", "multipart/x-mixed-replace; boundary=" + WEBCAM_BOUNDARY
++        )
++        self.send_header("Cache-Control", "no-store")
++        self.send_header("Pragma", "no-cache")
++        self.send_header("Connection", "close")
++        self.end_headers()
++        marker = ("--" + WEBCAM_BOUNDARY + "\r\n").encode("ascii")
++        try:
++            while True:
++                snap = PIPELINE.snapshot()
++                jpeg = snap.get("jpeg")
++                if not jpeg:
++                    time.sleep(0.05)
++                    continue
++                self.wfile.write(marker)
++                self.wfile.write(b"Content-Type: image/jpeg\r\n")
++                self.wfile.write(("Content-Length: %d\r\n\r\n" % len(jpeg)).encode("ascii"))
++                self.wfile.write(jpeg)
++                self.wfile.write(b"\r\n")
++                self.wfile.flush()
++                time.sleep(0.05)
++        except CLIENT_GONE:
++            return
++        except OSError as exc:
++            if _client_disconnected(exc):
++                return
++            return
++
+     def _proxy_stream(self) -> None:
+         stream_url, _base = CAMERA.get()
+         CAMERA.begin_view()
+         upstream = None
+         sent = False
+         try:
+             try:
+                 upstream = OPENER.open(_request(stream_url, close=False), timeout=STREAM_TIMEOUT)
+             except Exception as exc:
+                 _close_quietly(exc)
+@@ -491,20 +613,21 @@ def main() -> None:
+         stream_url, _base = CAMERA.set_url(raw_camera)
+     except CameraError:
+         raise SystemExit("CAMERA_URL must be an http or https address.") from None
+ 
+     port = _port_from_env()
+     try:
+         server = ViewerServer((HOST, port), Handler)
+     except OSError as exc:
+         raise SystemExit(f"Could not bind http://{HOST}:{port}: {exc}") from exc
+ 
++    PIPELINE.start()
+     print(f"Viewer at http://{HOST}:{port}", flush=True)
+     print(f"Camera stream {stream_url}", flush=True)
+     try:
+         server.serve_forever()
+     except KeyboardInterrupt:
+         print("Stopping.", flush=True)
+     finally:
+         server.server_close()
+ 
+ 
+diff --git a/computer-vision/viewer/static/app.js b/computer-vision/viewer/static/app.js
+index 0b340ed..0dc3248 100644
+--- a/computer-vision/viewer/static/app.js
++++ b/computer-vision/viewer/static/app.js
+@@ -1,28 +1,38 @@
+ (function () {
+   "use strict";
+ 
+   var video = document.getElementById("video");
+   var form = document.getElementById("camera-form");
+   var input = document.getElementById("camera-url");
+   var pill = document.getElementById("status-pill");
+   var streamUrl = document.getElementById("stream-url");
+   var detail = document.getElementById("detail");
++  var cueEl = document.getElementById("cue");
++  var modeSelect = document.getElementById("mode");
++  var sourceWebcam = document.getElementById("source-webcam");
++  var sourceEsp32 = document.getElementById("source-esp32");
+   var submitButton = form.querySelector("button[type='submit']");
+ 
+   var editing = false;
+   var stickyError = false;
+   var retryTimer = 0;
+   var healthGeneration = 0;
++  var sourceKind = "webcam";
++  var lastSpeech = "";
+ 
+   var OFFLINE_DETAIL =
+     "Camera unreachable. Join the Strider-CAM Wi-Fi, or enter the camera address.";
++  var CROSSWALK_LINE =
++    "Crosswalk lining-up is not estimated from this camera.";
++  var DEPTH_LINE =
++    "Steps, curbs, and drop-offs are not estimated from this camera.";
+ 
+   function setPill(state) {
+     var label = "Connecting";
+     if (state === "live") {
+       label = "Live";
+     } else if (state === "offline") {
+       label = "Camera unreachable";
+     }
+     pill.dataset.state = state;
+     pill.textContent = label;
+@@ -35,34 +45,105 @@
+       return;
+     }
+     detail.hidden = false;
+     detail.textContent = text;
+   }
+ 
+   function connectStream() {
+     video.src = "/stream?t=" + Date.now();
+   }
+ 
++  function connectWebcam() {
++    video.src = "/webcam?t=" + Date.now();
++  }
++
++  function connectCurrent() {
++    if (sourceKind === "webcam") {
++      connectWebcam();
++    } else {
++      connectStream();
++    }
++  }
++
+   function scheduleRetry() {
+     window.clearTimeout(retryTimer);
+     retryTimer = window.setTimeout(function () {
+       if (!editing) {
+-        connectStream();
++        connectCurrent();
+       }
+     }, 2000);
+   }
+ 
+   function showStream(url) {
+     streamUrl.textContent = url || "";
+   }
+ 
++  function cueText(data) {
++    var reason = data.reason || "";
++    var speech = data.speech || "";
++    var mode = data.mode || "general";
++    if (speech) {
++      lastSpeech = speech;
++    }
++    if (mode === "crosswalk") {
++      return speech ? CROSSWALK_LINE + "\n" + speech : CROSSWALK_LINE;
++    }
++    if (mode === "depth") {
++      return speech ? DEPTH_LINE + "\n" + speech : DEPTH_LINE;
++    }
++    if (reason === "clear") {
++      return "Nothing in your path.";
++    }
++    if (reason === "unsteady") {
++      return "Picture is not steady enough to guide.";
++    }
++    if (reason === "model-missing") {
++      return "Detector weights are not on this computer yet.";
++    }
++    if (reason === "camera-missing") {
++      return "No webcam is available.";
++    }
++    if (reason === "holding") {
++      return lastSpeech || "Nothing in your path.";
++    }
++    if (reason === "pending") {
++      return "Watching.";
++    }
++    if (reason === "pass" || reason === "blocked") {
++      return speech;
++    }
++    return speech || "Nothing in your path.";
++  }
++
++  async function refreshCue() {
++    try {
++      var response = await fetch("/api/cue", { cache: "no-store" });
++      var data = await response.json();
++      cueEl.textContent = cueText(data);
++      if (sourceKind === "webcam") {
++        if (data.reason === "camera-missing") {
++          setPill("offline");
++        } else if (pill.dataset.state !== "live") {
++          setPill("live");
++        }
++      }
++    } catch (err) {
++      if (sourceKind === "webcam") {
++        setPill("offline");
++      }
++    }
++  }
++
+   async function refreshHealth() {
++    if (sourceKind === "webcam") {
++      return;
++    }
+     var generation = ++healthGeneration;
+     try {
+       var response = await fetch("/api/health", { cache: "no-store" });
+       var data = await response.json();
+       if (generation !== healthGeneration) {
+         return;
+       }
+       if (data.streamUrl) {
+         showStream(data.streamUrl);
+       }
+@@ -81,77 +162,129 @@
+       if (generation !== healthGeneration) {
+         return;
+       }
+       setPill("offline");
+       if (!stickyError) {
+         showDetail(OFFLINE_DETAIL);
+       }
+     }
+   }
+ 
++  async function postJson(url, body) {
++    var response = await fetch(url, {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify(body)
++    });
++    var data = {};
++    try {
++      data = await response.json();
++    } catch (ignore) {
++      data = {};
++    }
++    return { response: response, data: data };
++  }
++
++  async function selectWebcam() {
++    sourceKind = "webcam";
++    sourceWebcam.checked = true;
++    stickyError = false;
++    setPill("connecting");
++    showDetail("");
++    showStream("webcam");
++    try {
++      await postJson("/api/source", { kind: "webcam", index: 0 });
++    } catch (err) {
++      setPill("offline");
++    }
++    connectWebcam();
++  }
++
++  async function selectEsp32(url) {
++    sourceKind = "esp32";
++    sourceEsp32.checked = true;
++    stickyError = false;
++    setPill("connecting");
++    showDetail("");
++    try {
++      var result = await postJson("/api/source", { kind: "esp32", url: url });
++      if (!result.response.ok) {
++        stickyError = true;
++        setPill("offline");
++        showDetail(result.data.detail || OFFLINE_DETAIL);
++        return;
++      }
++      if (result.data.streamUrl) {
++        showStream(result.data.streamUrl);
++        if (!editing) {
++          input.value = result.data.streamUrl;
++        }
++      }
++    } catch (err) {
++      setPill("offline");
++      showDetail(OFFLINE_DETAIL);
++      return;
++    }
++    connectStream();
++    await refreshHealth();
++  }
++
++  sourceWebcam.addEventListener("change", function () {
++    if (sourceWebcam.checked) {
++      selectWebcam();
++    }
++  });
++
++  sourceEsp32.addEventListener("change", function () {
++    if (sourceEsp32.checked) {
++      selectEsp32(input.value.trim());
++    }
++  });
++
++  modeSelect.addEventListener("change", async function () {
++    try {
++      await postJson("/api/mode", { mode: modeSelect.value });
++      await refreshCue();
++    } catch (err) {
++      return;
++    }
++  });
++
+   input.addEventListener("focus", function () {
+     editing = true;
+     window.clearTimeout(retryTimer);
+   });
+ 
+   input.addEventListener("input", function () {
+     editing = true;
+   });
+ 
+   input.addEventListener("blur", function () {
+     editing = false;
+     if (pill.dataset.state === "offline") {
+       scheduleRetry();
+     }
+   });
+ 
+   form.addEventListener("submit", async function (event) {
+     event.preventDefault();
+-    stickyError = false;
+-    setPill("connecting");
+-    showDetail("");
+     submitButton.disabled = true;
+     try {
+-      var response = await fetch("/api/camera", {
+-        method: "POST",
+-        headers: { "Content-Type": "application/json" },
+-        body: JSON.stringify({ url: input.value.trim() })
+-      });
+-      var data = {};
+-      try {
+-        data = await response.json();
+-      } catch (ignore) {
+-        data = {};
+-      }
+-      if (!response.ok) {
+-        stickyError = true;
+-        setPill("offline");
+-        showDetail(data.detail || "Enter an http or https camera address.");
+-        return;
+-      }
+-      if (data.streamUrl) {
+-        showStream(data.streamUrl);
+-        input.value = data.streamUrl;
+-      }
+-      connectStream();
+-      await refreshHealth();
+-    } catch (err) {
+-      setPill("offline");
+-      showDetail(OFFLINE_DETAIL);
++      await selectEsp32(input.value.trim());
+     } finally {
+       submitButton.disabled = false;
+     }
+   });
+ 
+   video.addEventListener("error", function () {
+     setPill("offline");
+-    if (!stickyError) {
++    if (sourceKind === "esp32" && !stickyError) {
+       showDetail(OFFLINE_DETAIL);
+     }
+     if (!editing) {
+       scheduleRetry();
+     }
+   });
+ 
+   video.addEventListener("load", function () {
+     window.clearTimeout(retryTimer);
+     setPill("live");
+@@ -159,24 +292,27 @@
+       showDetail("");
+     }
+   });
+ 
+   async function boot() {
+     setPill("connecting");
+     try {
+       var response = await fetch("/api/camera", { cache: "no-store" });
+       var data = await response.json();
+       var current = data.streamUrl || data.baseUrl || "";
+-      showStream(current);
++      if (sourceKind !== "webcam") {
++        showStream(current);
++      }
+       if (!editing) {
+         input.value = current;
+       }
+     } catch (err) {
+       showDetail(OFFLINE_DETAIL);
+     }
+-    connectStream();
+-    await refreshHealth();
++    await selectWebcam();
++    await refreshCue();
+     window.setInterval(refreshHealth, 3000);
++    window.setInterval(refreshCue, 1000);
+   }
+ 
+   boot();
+ })();
+diff --git a/computer-vision/viewer/static/index.html b/computer-vision/viewer/static/index.html
+index 0b96879..e46e0c7 100644
+--- a/computer-vision/viewer/static/index.html
++++ b/computer-vision/viewer/static/index.html
+@@ -3,48 +3,74 @@
+ <head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+   <title>Strider vision</title>
+   <link rel="stylesheet" href="/static/styles.css">
+ </head>
+ <body>
+   <header class="topbar">
+     <div class="brand">
+       <h1>Strider vision</h1>
+-      <p class="tagline">Live collar camera</p>
++      <p class="tagline">Bench webcam for the collar camera</p>
+     </div>
+     <p id="status-pill" class="pill" data-state="connecting" role="status" aria-live="polite" aria-atomic="true">Connecting</p>
+     <p class="stream-url">
+       <span class="eyebrow">Stream</span>
+       <span id="stream-url"></span>
+     </p>
+   </header>
+ 
+   <main>
++    <div class="toolbar">
++      <fieldset class="source-pick">
++        <legend>Video source</legend>
++        <div class="choice-row">
++          <label class="choice" for="source-webcam">
++            <input type="radio" id="source-webcam" name="source" value="webcam" checked>
++            Webcam
++          </label>
++          <label class="choice" for="source-esp32">
++            <input type="radio" id="source-esp32" name="source" value="esp32">
++            ESP32
++          </label>
++        </div>
++      </fieldset>
++      <div class="mode-pick">
++        <label for="mode">Guidance mode</label>
++        <select id="mode" name="mode">
++          <option value="general" selected>General guidance</option>
++          <option value="crosswalk">Crosswalk assistance</option>
++          <option value="depth">Depth perception</option>
++        </select>
++      </div>
++    </div>
++
+     <form id="camera-form" autocomplete="off">
+       <label for="camera-url">Camera address</label>
+       <div class="controls">
+         <input
+           id="camera-url"
+           name="url"
+           type="text"
+           inputmode="url"
+           spellcheck="false"
+           autocapitalize="off"
+           placeholder="http://192.168.4.1 or http://192.168.1.20:81/stream"
+           required>
+         <button type="submit">Connect</button>
+       </div>
+     </form>
+ 
++    <p id="cue" class="cue" role="status" aria-live="polite" aria-atomic="true"></p>
++
+     <section class="stage" aria-label="Live camera view">
+-      <img id="video" alt="Live camera" aria-describedby="detail">
++      <img id="video" alt="Live camera" aria-describedby="cue detail">
+     </section>
+     <p id="detail" class="detail" role="status" aria-live="polite" hidden></p>
+   </main>
+ 
+   <noscript>
+     <p class="detail">This viewer needs JavaScript to connect to the camera.</p>
+   </noscript>
+   <script src="/static/app.js"></script>
+ </body>
+ </html>
+diff --git a/computer-vision/viewer/static/styles.css b/computer-vision/viewer/static/styles.css
+index 8fe59bf..d43a9f7 100644
+--- a/computer-vision/viewer/static/styles.css
++++ b/computer-vision/viewer/static/styles.css
+@@ -120,37 +120,104 @@ label {
+   margin-bottom: 6px;
+   font-weight: 700;
+ }
+ 
+ .controls {
+   display: flex;
+   gap: 8px;
+   align-items: stretch;
+ }
+ 
++.toolbar {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 16px 24px;
++  align-items: flex-end;
++}
++
++.source-pick {
++  margin: 0;
++  padding: 0;
++  border: 0;
++  min-width: 0;
++}
++
++.source-pick legend,
++.mode-pick label {
++  display: block;
++  margin-bottom: 6px;
++  font-weight: 700;
++}
++
++.choice-row {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px 16px;
++  align-items: center;
++  min-height: 44px;
++}
++
++.choice {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  margin: 0;
++  font-weight: 600;
++  cursor: pointer;
++}
++
++.choice input {
++  width: auto;
++  min-width: 20px;
++  min-height: 20px;
++  flex: none;
++  margin: 0;
++  accent-color: var(--button);
++}
++
++.mode-pick {
++  min-width: 220px;
++  flex: 1 1 220px;
++}
++
++.cue {
++  margin: 0;
++  max-width: 68ch;
++  color: var(--text);
++  font-size: 1.05rem;
++  font-weight: 600;
++  white-space: pre-line;
++}
++
+ input,
+-button {
++button,
++select {
+   font: inherit;
+   min-height: 44px;
+   border-radius: 8px;
+ }
+ 
+-input {
++input,
++select {
+   flex: 1;
+   width: 100%;
+   min-width: 0;
+   padding: 10px 12px;
+   background: var(--input);
+   color: var(--text);
+   border: 2px solid var(--line);
+ }
+ 
++select {
++  cursor: pointer;
++}
++
+ input::placeholder {
+   color: #c5d0d8;
+   opacity: 1;
+ }
+ 
+ button {
+   padding: 10px 18px;
+   background: var(--button);
+   color: var(--button-text);
+   border: 2px solid var(--button);
+@@ -164,21 +231,22 @@ button:hover {
+ }
+ 
+ button:disabled {
+   background: #9fb8b1;
+   border-color: #9fb8b1;
+   color: #10201c;
+   cursor: wait;
+ }
+ 
+ input:focus,
+-button:focus {
++button:focus,
++select:focus {
+   outline: 3px solid var(--focus);
+   outline-offset: 3px;
+   border-color: var(--focus);
+   box-shadow: 0 0 0 3px var(--focus);
+ }
+ 
+ .stage {
+   flex: 1;
+   display: flex;
+   align-items: center;

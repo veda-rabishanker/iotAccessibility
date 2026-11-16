@@ -26,13 +26,13 @@ The viewer listens on `127.0.0.1` only. Stop it with Ctrl+C. Webcam index 0 is t
 
 ## What the page does
 
-- **Video source** — Webcam or ESP32. Both run the detector and depth models, and the page loads the annotated frames from `/webcam`. The ESP32 allows one stream connection, so the raw `/stream` proxy is not opened while the detector reads it.
-- **Detector** — YOLOE-26n with Strider's hazard words (default) or YOLO26n (COCO). Switch live to compare.
-- **View** — Boxes, or Depth (near is bright/warm, far is dark). The two grey lines mark the walking corridor the depth check looks at.
-- **Guidance mode** — General guidance, Crosswalk assistance, and Depth perception. It changes the page copy only.
-- **Cue line** — one line from `GET /api/cue`, refreshed twice a second. Under it: distance bucket, confidence, whether the cue came from the detector or depth, and model timings.
-- **Speak cues** — reads each new cue aloud with the browser's speech. The browser needs one click before it may speak.
-- **False alert / Missed it** — writes a mark to the evaluation log with the last spoken cue.
+- **Video source** â€” Webcam or ESP32. Both run the detector and depth models, and the page loads the annotated frames from `/webcam`. The ESP32 allows one stream connection, so the raw `/stream` proxy is not opened while the detector reads it.
+- **Detector** â€” YOLOE-26n with Strider's hazard words (default) or YOLO26n (COCO). Switch live to compare.
+- **View** â€” Boxes, or Depth (near is bright/warm, far is dark). The two grey lines mark the walking corridor the depth check looks at.
+- **Guidance mode** â€” General guidance, Crosswalk assistance, and Depth perception. It changes the page copy only.
+- **Cue line** â€” one line from `GET /api/cue`, refreshed twice a second. Under it: distance bucket, confidence, whether the cue came from the detector or depth, and model timings.
+- **Speak cues** â€” reads each new cue aloud with the browser's speech. The browser needs one click before it may speak.
+- **False alert / Missed it** â€” writes a mark to the evaluation log with the last spoken cue.
 
 When nothing is cued, General guidance shows `No obstacle detected. Keep using your cane.` The page never says the path is clear, never reports feet or metres, and never says a crosswalk is safe.
 
@@ -40,14 +40,15 @@ API: `GET /api/cue`, `GET /api/detectors`, `POST /api/source`, `POST /api/mode`,
 
 ## Camera address
 
-The first-run ESP32 camera is `http://192.168.4.1/stream`. That is the Strider-CAM SoftAP: the camera is at `192.168.4.1` and the Wi-Fi name is `Strider-CAM`.
+The default ESP32 camera is `http://192.168.4.1:81/stream`. That is the Strider-CAM SoftAP: the camera is at `192.168.4.1` and the Wi-Fi name is `Strider-CAM`.
 
 The computer has to be on the same network as the camera. For the default address, join the `Strider-CAM` Wi-Fi, then start the viewer and choose ESP32.
 
-To point at another camera, type its address in the page and press Connect. A base URL and a full stream URL both work:
+To point at another camera, type its address in the page and press Connect. Strider firmware and stock CameraWebServer both stream on port 81, so an address with no port or path gets `:81/stream` added:
 
-- `http://192.168.4.1` becomes `http://192.168.4.1/stream`
-- `http://192.168.1.20:81/stream` is used as written (stock CameraWebServer often serves the stream on port 81)
+- `http://172.20.10.3` becomes `http://172.20.10.3:81/stream`
+- `http://strider-cam-3fa2.local` becomes `http://strider-cam-3fa2.local:81/stream`
+- an address with a port or path is used as written, e.g. `http://192.168.1.20:8000` becomes `http://192.168.1.20:8000/stream`
 
 You can also set the starting address before launch.
 
@@ -92,7 +93,10 @@ PORT=8090 python server.py
 
 Strider firmware:
 
-- `GET /stream` â€” multipart MJPEG (`multipart/x-mixed-replace`, boundary `frame`)
-- `GET /status` â€” JSON `{ok, ip, mode, framesize}`
+- port 81 `GET /stream` â€” multipart MJPEG (`multipart/x-mixed-replace`, boundary `frame`)
+- port 80 `GET /status` â€” JSON with `device`, `name`, `ip`, `mode`, `framesize`, `quality`, `stream_port`, `rssi`
+- port 80 `GET /control?size=QVGA&quality=15` â€” change resolution and JPEG quality live
+
+See [`../firmware/README.md`](../firmware/README.md#http-routes) for the full table.
 
 The page loads `/webcam` for the laptop camera and `/stream` for the ESP32. The server reads the ESP32 camera and forwards the bytes. The page checks `/api/health` every few seconds on the ESP32 path and shows **Connecting**, **Live**, or **Camera unreachable**.

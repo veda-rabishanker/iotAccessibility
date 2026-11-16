@@ -21,6 +21,7 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 
 HOST = "127.0.0.1"
 DEFAULT_CAMERA = "http://192.168.4.1:81/stream"
+STREAM_PORT = 81  # Strider firmware serves /stream on its own port.
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DETECTOR_DIR = Path(__file__).resolve().parent.parent / "detector"
 CHUNK_SIZE = 8192
@@ -58,8 +59,10 @@ class CameraError(ValueError):
 def normalize_camera_url(raw: object) -> tuple[str, str]:
     """Return (stream_url, base_url) for a base URL or a full stream URL.
 
-    An empty path or ``/`` means the stream is ``{origin}/stream``. Any other
-    path is kept, so ``http://host:81/stream`` stays on port 81.
+    An empty path or ``/`` means the stream is ``/stream``: on port 81 (where
+    Strider firmware streams) when no port is given, else on the given port.
+    Any other path is kept as written. The base URL keeps the typed port, so
+    ``http://host`` still reaches ``/status`` on port 80.
     """
     if not isinstance(raw, str):
         raise CameraError("Enter an http or https camera address.")
@@ -78,7 +81,8 @@ def normalize_camera_url(raw: object) -> tuple[str, str]:
 
     origin = urlunsplit((scheme, parts.netloc, "", "", ""))
     if path in ("", "/"):
-        stream = origin + "/stream"
+        netloc = parts.netloc if parts.port is not None else f"{parts.netloc}:{STREAM_PORT}"
+        stream = urlunsplit((scheme, netloc, "/stream", "", ""))
     else:
         stream = urlunsplit((scheme, parts.netloc, path, parts.query, ""))
     return stream, origin

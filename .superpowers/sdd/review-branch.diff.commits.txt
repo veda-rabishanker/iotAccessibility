@@ -1,0 +1,7 @@
+﻿b0e9bbd Report a model failure separately from a missing webcam.
+0218add Pin YOLO11n ONNX because YOLOv8n ONNX is not published.
+d8a01b0 Wire the local viewer to the laptop webcam and one walking cue.
+2b38a8b Add YOLOv8 tensor parser with letterbox and NMS.
+27eaaf7 Add frame quality gate and COCO walker label table.
+fe6b6dc Add a walking-cue policy that maps detection boxes to one spoken line.
+3a5c324 Record the approved webcam obstacle-detection plan.

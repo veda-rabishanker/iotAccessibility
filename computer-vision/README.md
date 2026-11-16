@@ -2,6 +2,10 @@
 
 Separate from the Strider Expo app. This folder is the collar camera pipeline on the bench: an AI-Thinker ESP32-CAM streams MJPEG over Wi-Fi, and a local page on the computer turns either that stream or the laptop webcam into one walking cue.
 
+## Pitch
+
+A white cane finds what is on the ground, but it misses things at head height, cars and bikes coming toward you, and the edge of a curb until you are already on it, so Strider's collar camera watches the path ahead and turns what it sees into one short spoken cue, like "Bike approaching on the left." or "Drop ahead. Stop." An ESP32-CAM streams MJPEG over Wi-Fi to two pretrained models running side by side on ONNX Runtime: **YOLOE-26n**, an open-vocabulary detector prompted with Strider's hazard words (vehicles, people, poles, cones, open car doors), says *what* is there, and **Depth Anything V2 Small**, a monocular depth model, says *how close* everything is, so it can also warn about head-height objects, drops and obstacles the detector cannot name. A multi-object tracker flags movers whose boxes grow steadily as approaching, and a priority policy picks the single most urgent cue and holds it so the walker isn't flooded. It adds to the cane rather than replacing it: it never says the path is clear, and every false alert can be logged so we can measure and tune it.
+
 The webcam is a bench stand-in for the collar camera. It is the right way to watch the pipeline. It is the wrong way to claim the collar works on a street. The page never reports distances in feet or metres, never says a crosswalk is safe, and never says the path is clear.
 
 ## How it works
@@ -81,7 +85,7 @@ Spoken cues and the **False alert** / **Missed it** buttons are appended to `log
 
 ## Layout
 
-- [`firmware/`](firmware/README.md) — Arduino sketch. First flash starts a hotspot named `Strider-CAM` (password `strider-cam`) and serves `http://192.168.4.1/stream`.
+- [`firmware/`](firmware/README.md) — Arduino sketch. With no Wi-Fi set it starts a hotspot named `Strider-CAM` (password `strider-cam`) and streams at `http://192.168.4.1:81/stream`. It can also join a home network or an iPhone hotspot, and names itself `strider-cam-<id>.local`. Status and live size/quality control are on port 80.
 - [`viewer/`](viewer/README.md) — the local page and server.
 - [`detector/`](detector/) — capture, models, tracker, corridor check, policy, eval log. Tests: `python -m pytest detector -q` (no camera or weights needed).
 - [`tools/`](tools/) — model export.
@@ -89,7 +93,9 @@ Spoken cues and the **False alert** / **Missed it** buttons are appended to `log
 ## Watch the ESP32 camera
 
 1. Flash `firmware/esp32_cam_stream` (see the firmware README). GPIO0 must be grounded only while uploading.
-2. Join the `Strider-CAM` Wi-Fi from this computer, or put your home Wi-Fi into `config.h` and flash again.
-3. Start the viewer and choose ESP32. The detector reads `http://192.168.4.1/stream` and the page shows the annotated frames, the same as for the webcam.
+2. Join the `Strider-CAM` Wi-Fi from this computer, or put your home Wi-Fi (or iPhone hotspot) into `config.h` and flash again.
+3. Start the viewer and choose ESP32. The detector reads `http://192.168.4.1:81/stream` by default and the page shows the annotated frames, the same as for the webcam. On another network, type the stream address Serial printed (`http://<camera-ip>:81/stream` or `http://strider-cam-<id>.local:81/stream`).
 
 If the board is already running Espressif's CameraWebServer, type its stream address in the page, usually `http://<camera-ip>:81/stream`.
+
+The Strider phone app's **Live camera view** finds the camera on its own (Strider-CAM hotspot, iPhone hotspot, or an earlier address) and shows the raw stream. Detection and cues run only in this viewer for now.

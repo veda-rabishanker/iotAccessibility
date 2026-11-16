@@ -8,13 +8,18 @@ import { hostFromInput, streamUrl, useStriderDevices, type StriderDevice } from 
 
 type StreamState = 'loading' | 'live' | 'stopped';
 
-/** Full stream URL for a typed address: keep an explicit path, otherwise use /stream. */
+/**
+ * Full stream URL for a typed address: keep an explicit path, otherwise use /stream,
+ * on port 81 (where current firmware streams) unless a port was typed.
+ */
 function manualStreamUrl(input: string): string | null {
   const host = hostFromInput(input);
   if (!host) return null;
   const withoutScheme = input.trim().replace(/^https?:\/\//i, '');
   const hasPath = withoutScheme.includes('/') && withoutScheme.split('/').slice(1).join('/').length > 0;
-  return hasPath ? `http://${withoutScheme}` : `http://${host}/stream`;
+  if (hasPath) return `http://${withoutScheme}`;
+  const hasPort = /:\d+$/.test(host);
+  return hasPort ? `http://${host}/stream` : `http://${host}:81/stream`;
 }
 
 /** The ESP32 sends MJPEG; an <img> inside a WebView plays it on both iOS and Android. */

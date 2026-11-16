@@ -1,0 +1,121 @@
+﻿# Review package: fe6b6dc..27eaaf7
+
+## Commits
+27eaaf7 Add frame quality gate and COCO walker label table.
+
+## Files changed
+ computer-vision/detector/labels.py       | 16 ++++++++++++++++
+ computer-vision/detector/labels_test.py  | 33 ++++++++++++++++++++++++++++++++
+ computer-vision/detector/quality.py      | 10 ++++++++++
+ computer-vision/detector/quality_test.py | 25 ++++++++++++++++++++++++
+ 4 files changed, 84 insertions(+)
+
+## Diff
+diff --git a/computer-vision/detector/labels.py b/computer-vision/detector/labels.py
+new file mode 100644
+index 0000000..8a70934
+--- /dev/null
++++ b/computer-vision/detector/labels.py
+@@ -0,0 +1,16 @@
++_WALKER_BY_COCO_ID: dict[int, tuple[str, int, str]] = {
++    0: ("person", 2, "Person"),
++    1: ("bike", 2, "Bike"),
++    2: ("vehicle", 3, "Vehicle"),
++    3: ("bike", 2, "Bike"),
++    5: ("vehicle", 3, "Vehicle"),
++    7: ("vehicle", 3, "Vehicle"),
++    16: ("dog", 2, "Dog"),
++    24: ("bag", 1, "Bag"),
++    26: ("bag", 1, "Bag"),
++    28: ("bag", 1, "Bag"),
++}
++
++
++def walker_class(coco_id: int) -> tuple[str, int, str] | None:
++    return _WALKER_BY_COCO_ID.get(coco_id)
+diff --git a/computer-vision/detector/labels_test.py b/computer-vision/detector/labels_test.py
+new file mode 100644
+index 0000000..08318d9
+--- /dev/null
++++ b/computer-vision/detector/labels_test.py
+@@ -0,0 +1,33 @@
++import pytest
++
++from labels import walker_class
++
++VEHICLE = ("vehicle", 3, "Vehicle")
++PERSON = ("person", 2, "Person")
++BIKE = ("bike", 2, "Bike")
++DOG = ("dog", 2, "Dog")
++BAG = ("bag", 1, "Bag")
++
++
++@pytest.mark.parametrize(
++    "coco_id, expected",
++    [
++        (0, PERSON),
++        (1, BIKE),
++        (2, VEHICLE),
++        (3, BIKE),
++        (5, VEHICLE),
++        (7, VEHICLE),
++        (16, DOG),
++        (24, BAG),
++        (26, BAG),
++        (28, BAG),
++    ],
++)
++def test_walker_class_returns_table_entry(coco_id: int, expected: tuple[str, int, str]):
++    assert walker_class(coco_id) == expected
++
++
++@pytest.mark.parametrize("coco_id", [9, 56, 62])
++def test_walker_class_returns_none_for_out_of_table_ids(coco_id: int):
++    assert walker_class(coco_id) is None
+diff --git a/computer-vision/detector/quality.py b/computer-vision/detector/quality.py
+new file mode 100644
+index 0000000..6a265ea
+--- /dev/null
++++ b/computer-vision/detector/quality.py
+@@ -0,0 +1,10 @@
++import numpy as np
++
++
++def frame_is_usable(gray: np.ndarray) -> bool:
++    mean = float(gray.mean())
++    if mean < 25 or mean > 235:
++        return False
++    if float(gray.std()) < 8:
++        return False
++    return True
+diff --git a/computer-vision/detector/quality_test.py b/computer-vision/detector/quality_test.py
+new file mode 100644
+index 0000000..cbe53c7
+--- /dev/null
++++ b/computer-vision/detector/quality_test.py
+@@ -0,0 +1,25 @@
++import numpy as np
++
++from quality import frame_is_usable
++
++
++def test_black_frame_is_not_usable():
++    gray = np.zeros((10, 10), dtype=np.uint8)
++    assert frame_is_usable(gray) is False
++
++
++def test_white_frame_is_not_usable():
++    gray = np.full((10, 10), 255, dtype=np.uint8)
++    assert frame_is_usable(gray) is False
++
++
++def test_flat_mid_gray_is_not_usable():
++    gray = np.full((10, 10), 128, dtype=np.uint8)
++    assert frame_is_usable(gray) is False
++
++
++def test_noisy_mid_gray_is_usable():
++    gray = np.tile(np.array([[100, 156]], dtype=np.uint8), (10, 10))
++    assert 25 <= float(gray.mean()) <= 235
++    assert float(gray.std()) >= 8
++    assert frame_is_usable(gray) is True
